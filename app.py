@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import json
+from datetime import datetime, date
 
 # 1. CONFIGURAÇÃO DA PÁGINA (Estilo Dashboard em tela cheia)
 st.set_page_config(page_title="Molicenter - Quadro de Lotação", layout="wide")
@@ -19,7 +20,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# DICIOMÁRIO DE USUÁRIOS, SENHAS E PERMISSÕES (Matriz de Perfil)
+# DICIONÁRIO DE USUÁRIOS, SENHAS E PERMISSÕES (Matriz de Perfil)
 USUARIOS_DB = {
     "analista@molicenter.com.br": {"senha": "moli1234", "perfil": "analista", "loja_fixa": None},
     "rh1@molicenter.com.br": {"senha": "moli1234", "perfil": "rh", "loja_fixa": None},
@@ -41,7 +42,7 @@ if "logado" not in st.session_state:
     st.session_state["perfil"] = ""
     st.session_state["loja_fixa"] = None
 
-# 2. INTERFACE DA TELA DE LOGIN
+# INTERFACE DA TELA DE LOGIN
 if not st.session_state["logado"]:
     st.title("🔐 Sistema Quadro de Lotação - Molicenter")
     st.markdown("---")
@@ -62,12 +63,25 @@ if not st.session_state["logado"]:
                 st.rerun()
             else:
                 st.error("Usuário ou senha incorretos. Tente novamente.")
-    st.stop() # Interrompe a execução do resto do app se não estiver logado
+    st.stop()
 
-# Se chegou aqui, o usuário está logado. Adiciona botão de Logoff no topo da barra lateral
 if st.sidebar.button("🚪 Sair do Sistema"):
     st.session_state["logado"] = False
     st.rerun()
+
+# FUNÇÃO DE FORMATAÇÃO DE DATAS PARA EXIBIÇÃO NA TABELA
+def formatar_data_br(valor):
+    val_str = str(valor).strip()
+    if val_str in ["nan", "None", "", "-", "0"]:
+        return "-"
+    try:
+        # Tenta tratar formatos ISO vindo do Sheets (ex: 2026-05-30T12:00:00.000Z ou similar)
+        if "T" in val_str:
+            val_str = val_str.split("T")[0]
+        dt = pd.to_datetime(val_str)
+        return dt.strftime("%d/%m/%Y")
+    except:
+        return val_str
 
 # 3. FUNÇÃO HÍBRIDA DE CARGA DE DADOS
 @st.cache_data(ttl="0d")
@@ -101,14 +115,14 @@ def carregar_dados_completos():
                 if len(idx_list) > 0:
                     idx = idx_list[0]
                     df.at[idx, 'Observação'] = registro.get('Observação', '-')
-                    df.at[idx, 'Data Abertura'] = registro.get('Data Abertura', '-')
+                    df.at[idx, 'Data Abertura'] = formatar_data_br(registro.get('Data Abertura', '-'))
                     df.at[idx, 'Responsável'] = registro.get('Responsável', '-')
                     df.at[idx, 'Horário Contrato'] = registro.get('Horário Contrato', '-')
                     df.at[idx, 'Sexo'] = registro.get('Sexo', '-')
                     df.at[idx, 'Motivo'] = registro.get('Motivo', '-')
                     df.at[idx, 'Status RH'] = registro.get('Status RH', '-')
                     df.at[idx, 'Candidato'] = registro.get('Candidato', '-')
-                    df.at[idx, 'Data Admissão'] = registro.get('Data Admissão', '-')
+                    df.at[idx, 'Data Admissão'] = formatar_data_br(registro.get('Data Admissão', '-'))
     except:
         pass
 
@@ -117,7 +131,6 @@ def carregar_dados_completos():
 try:
     df_bruto = carregar_dados_completos()
 
-    # 4. TRAVA INTELIGENTE DE FILTRO DE LOJA POR PERFIL
     perfil = st.session_state["perfil"]
     loja_fixa = st.session_state["loja_fixa"]
 
@@ -127,18 +140,16 @@ try:
     st.markdown("---")
 
     if loja_fixa is not None:
-        # Se for gerente, a loja é travada de forma automática
         loja_selecionada = loja_fixa
         st.info(f"🏪 Modo de Visualização Restrito: **Loja {loja_selecionada:02d}**")
     else:
-        # Se for Analista, Supervisor ou RH, o seletor completo fica liberado
         lojas_disponiveis = sorted([int(l) for l in df_bruto['Loja'].unique() if int(l) > 0])
         loja_selecionada = st.selectbox("Selecione a Loja para Análise:", lojas_disponiveis, format_func=lambda x: f"Loja {int(x):02d}")
 
     df_loja = df_bruto[df_bruto['Loja'] == loja_selecionada].copy()
 
     # =========================================================
-    # 🛠️ BARRA LATERAL (SIDEBAR) - FORMULÁRIO COM REGRAS DE ACESSO
+    # 🛠️ BARRA LATERAL (SIDEBAR) - FORMULÁRIO COM SELETORES DE DATA
     # =========================================================
     st.sidebar.header("📝 Alimentar Informações")
     funcionarios_loja = sorted(df_loja['Nome'].dropna().unique())
@@ -148,7 +159,7 @@ try:
         dados_func = df_loja[df_loja['Nome'] == colaborador_selecionado].iloc[0]
         st.sidebar.markdown("---")
         
-        # 🔸 BLOCO DO SUPERVISOR (Habilitado para: analista, rh, supervisor)
+        # 🔸 BLOCO DO SUPERVISOR
         st.sidebar.subheader("🔸 Supervisor")
         if perfil in ["analista", "rh", "supervisor"]:
             nova_obs = st.sidebar.text_area("Observação:", value=str(dados_func['Observação']) if str(dados_func['Observação']) != "-" else "")
@@ -156,10 +167,20 @@ try:
             st.sidebar.text_input("Observação:", value=str(dados_func['Observação']), disabled=True)
             nova_obs = str(dados_func['Observação'])
         
-        # 🔹 BLOCO DO GERENTE (Habilitado para: analista, rh, supervisor, gerente)
+        # 🔹 BLOCO DO GERENTE
         st.sidebar.subheader("🔹 Gerente")
         if perfil in ["analista", "rh", "supervisor", "gerente"]:
-            nova_data_abertura = st.sidebar.text_input("Data Abertura:", value=str(dados_func['Data Abertura']) if str(dados_func['Data Abertura']) != "-" else "")
+            # Conversão inteligente para o calendário reconhecer a data atual ou carregar padrão
+            data_ab_atual = str(dados_func['Data Abertura']).strip()
+            try:
+                data_ab_default = datetime.strptime(data_ab_atual, "%d/%m/%Y").date() if data_ab_atual != "-" else date.today()
+            except:
+                data_ab_default = date.today()
+            
+            # Seletor em formato de Calendário Oficial
+            nova_data_ab_col = st.sidebar.date_input("Data Abertura:", value=data_ab_default, format="DD/MM/YYYY")
+            nova_data_abertura = nova_data_ab_col.strftime("%d/%m/%Y")
+            
             novo_responsavel = st.sidebar.text_input("Responsável:", value=str(dados_func['Responsável']) if str(dados_func['Responsável']) != "-" else "")
             novo_horario_contrato = st.sidebar.text_input("Horário Contrato:", value=str(dados_func['Horário Contrato']) if str(dados_func['Horário Contrato']) != "-" else "")
             
@@ -176,18 +197,27 @@ try:
             novo_sexo = st.sidebar.text_input("Sexo:", value=str(dados_func['Sexo']), disabled=True)
             novo_motivo = st.sidebar.text_input("Motivo:", value=str(dados_func['Motivo']), disabled=True)
         
-        # 🔺 BLOCO DO RH (Habilitado para: analista, rh)
+        # 🔺 BLOCO DO RH
         st.sidebar.subheader("🔺 Recursos Humanos (RH)")
         if perfil in ["analista", "rh"]:
             novo_status_rh = st.sidebar.text_input("Status RH:", value=str(dados_func['Status RH']) if str(dados_func['Status RH']) != "-" else "")
             novo_candidato = st.sidebar.text_input("Candidato:", value=str(dados_func['Candidato']) if str(dados_func['Candidato']) != "-" else "")
-            nova_data_admissao = st.sidebar.text_input("Data Admissão:", value=str(dados_func['Data Admissão']) if str(dados_func['Data Admissão']) != "-" else "")
+            
+            # Calendário para o RH também!
+            data_ad_atual = str(dados_func['Data Admissão']).strip()
+            try:
+                data_ad_default = datetime.strptime(data_ad_atual, "%d/%m/%Y").date() if data_ad_atual != "-" else date.today()
+            except:
+                data_ad_default = date.today()
+            
+            nova_data_ad_col = st.sidebar.date_input("Data Admissão:", value=data_ad_default, format="DD/MM/YYYY")
+            nova_data_admissao = nova_data_ad_col.strftime("%d/%m/%Y")
         else:
             novo_status_rh = st.sidebar.text_input("Status RH:", value=str(dados_func['Status RH']), disabled=True)
             novo_candidato = st.sidebar.text_input("Candidato:", value=str(dados_func['Candidato']), disabled=True)
             nova_data_admissao = st.sidebar.text_input("Data Admissão:", value=str(dados_func['Data Admissão']), disabled=True)
         
-        # BOTÃO SALVAR COM CAPTURA DE USUÁRIO DE LOGADO
+        # BOTÃO SALVAR
         if st.sidebar.button("💾 Salvar Alterações", use_container_width=True):
             payload = {
                 "Loja": int(loja_selecionada),
@@ -201,7 +231,7 @@ try:
                 "StatusRH": novo_status_rh,
                 "Candidato": novo_candidato,
                 "DataAdmissao": nova_data_admissao,
-                "Usuario": st.session_state["usuario"] # Envia o e-mail ativo do login para o histórico
+                "Usuario": st.session_state["usuario"]
             }
             
             try:
