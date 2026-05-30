@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
-from streamlit_gsheets import GSheetsConnection
 
-# 1. CONFIGURAÇÃO DA PÁGINA
+# 1. CONFIGURAÇÃO DA PÁGINA (Estilo Dashboard em tela cheia)
 st.set_page_config(page_title="Molicenter - Quadro de Lotação", layout="wide")
 
 # Estilo global das tabelas em HTML
@@ -37,13 +36,14 @@ st.markdown("""
 st.title("📊 Quadro de Lotação (QL) // Requisição")
 st.markdown("---")
 
-# 2. CONEXÃO DIRETA COM O GOOGLE SHEETS
-# (O Streamlit busca as credenciais em .streamlit/secrets.toml)
-conn = st.connection("gsheets", type=GSheetsConnection)
-
+# 2. FUNÇÃO LEVE PARA CARREGAR OS DADOS DO GOOGLE SHEETS
+@st.cache_data(ttl="0d")  # ttl="0d" garante que ele busque os dados atualizados sempre
 def carregar_dados_sheets():
-    # Carrega a aba "Banco" da sua planilha configurada
-    df = conn.read(worksheet="Banco", ttl="0d")
+    # URL do seu Google Sheets convertida para exportação direta em CSV (Mais rápido e seguro)
+    sheet_id = "1knZTCetuuYNmITP465gZEfOrozqmMwpfBFbWODW9ry8"
+    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=Banco"
+    
+    df = pd.read_csv(url)
     
     # Tratamento do Horário do Sistema
     nome_coluna_horario = 'Descrição (Escala)'
@@ -69,7 +69,7 @@ def carregar_dados_sheets():
 try:
     df_bruto = carregar_dados_sheets()
 
-    # 3. FILTRO DE LOJA (NA TELA PRINCIPAL)
+    # 3. FILTRO DE LOJA
     lojas_disponiveis = sorted(df_bruto['Loja'].dropna().unique())
     loja_selecionada = st.selectbox(
         "Selecione a Loja para Análise:", 
@@ -84,14 +84,11 @@ try:
     # =========================================================
     st.sidebar.header("📝 Alimentar Informações")
     
-    # Selecionar o funcionário da loja atual para editar
     funcionarios_loja = sorted(df_loja['Nome'].dropna().unique())
     colaborador_selecionado = st.sidebar.selectbox("Selecione o Colaborador:", funcionarios_loja)
     
     if colaborador_selecionado:
-        # Puxa os dados atuais do funcionário selecionado para mostrar nos campos
         dados_func = df_loja[df_loja['Nome'] == colaborador_selecionado].iloc[0]
-        
         st.sidebar.markdown("---")
         
         # Campos do Supervisor
@@ -112,33 +109,7 @@ try:
         novo_candidato = st.sidebar.text_input("Candidato:", value=str(dados_func['Candidato']) if str(dados_func['Candidato']) != "-" else "")
         nova_data_admissao = st.sidebar.text_input("Data Admissão:", value=str(dados_func['Data Admissão']) if str(dados_func['Data Admissão']) != "-" else "")
         
-        # Botão para Salvar as alterações de volta no Google Sheets
-        if st.sidebar.button("💾 Salvar Alterações", use_container_width=True):
-            # Localiza a linha exata no DataFrame bruto pelo nome do funcionário
-            idx = df_bruto[df_bruto['Nome'] == colaborador_selecionado].index[0]
-            
-            # Atualiza os valores com o que foi digitado
-            df_bruto.at[idx, 'Observação'] = nova_obs if nova_obs.strip() != "" else "-"
-            df_bruto.at[idx, 'Data Abertura'] = nova_data_abertura if nova_data_abertura.strip() != "" else "-"
-            df_bruto.at[idx, 'Responsável'] = novo_responsavel if novo_responsavel.strip() != "" else "-"
-            df_bruto.at[idx, 'Horário Contrato'] = novo_horario_contrato if novo_horario_contrato.strip() != "" else "-"
-            df_bruto.at[idx, 'Sexo'] = novo_sexo
-            df_bruto.at[idx, 'Motivo'] = novo_motivo if novo_motivo.strip() != "" else "-"
-            df_bruto.at[idx, 'Status RH'] = novo_status_rh if novo_status_rh.strip() != "" else "-"
-            df_bruto.at[idx, 'Candidato'] = novo_candidato if novo_candidato.strip() != "" else "-"
-            df_bruto.at[idx, 'Data Admissão'] = nova_data_admissao if nova_data_admissao.strip() != "" else "-"
-            
-            # Remove a coluna calculada temporária antes de enviar pro Sheets
-            if 'Horario_Sistema_Real' in df_bruto.columns:
-                df_bruto = df_bruto.drop(columns=['Horario_Sistema_Real'])
-                
-            # Grava o DataFrame atualizado de volta no Google Sheets
-            conn.update(worksheet="Banco", data=df_bruto)
-            st.sidebar.success("Dados salvos com sucesso no Google Sheets!")
-            
-            # Limpa o cache para recarregar a tela principal atualizada
-            st.cache_data.clear()
-            st.rerun()
+        st.sidebar.warning("⚠️ O módulo de salvamento direto via web está sendo configurado. Use os campos para testar a interface de digitação.")
 
     # =========================================================
     # 🏪 INDICADORES E PAINEL VISUAL (TELA PRINCIPAL)
