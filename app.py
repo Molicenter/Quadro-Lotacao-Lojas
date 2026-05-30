@@ -93,23 +93,35 @@ if "logado" not in st.session_state:
     st.session_state["loja_fixa"] = None
 
 # =========================================================
-# 🔐 2. INTERFACE E CONTROLE DA TELA DE LOGIN
+# 🔐 2. INTERFACE E CONTROLE DA TELA DE LOGIN (CENTRALIZADA)
 # =========================================================
 if not st.session_state["logado"]:
-    col_logo_top, col_title_top = st.columns([0.4, 2.5], vertical_alignment="center")
-    with col_logo_top:
+    # Espaçamento superior para descer um pouco o bloco de login
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    # Criação da estrutura de colunas para centralização [Esquerda, Centro, Direita]
+    col_esq, col_centro, col_dir = st.columns([1, 1.5, 1])
+    
+    with col_centro:
+        # Injeção de HTML/CSS Flexbox para colar o título do lado do passarinho e centralizar o conjunto
         if os.path.exists("passaro_logo.png"):
-            st.image("passaro_logo.png", width=110)
-    with col_title_top:
-        st.title("Molicenter - QL (Quadro de Lotação)")
-    
-    st.markdown("---")
-    
-    col_login, _ = st.columns([1, 2])
-    with col_login:
+            st.markdown("""
+                <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 20px;">
+                    <img src="app/static/passaro_logo.png" width="90" style="object-fit: contain;">
+                    <h1 style="margin: 0; font-size: 32px; white-space: nowrap;">Molicenter - QL</h1>
+                </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("<h1 style='text-align: center;'>Molicenter - QL</h1>", unsafe_allow_html=True)
+        
+        st.markdown("<h5 style='text-align: center; color: #888888; margin-top: -10px;'>Quadro de Lotação</h5>", unsafe_allow_html=True)
+        st.markdown("<hr style='margin-top: 10px; margin-bottom: 25px;'>", unsafe_allow_html=True)
+        
+        # Inputs organizados dentro do bloco centralizado
         user_input = st.text_input("E-mail corporativo:")
         pass_input = st.text_input("Senha de acesso:", type="password")
         
+        st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Entrar no Sistema", use_container_width=True):
             user_clean = user_input.strip().lower()
             if user_clean in USUARIOS_DB and USUARIOS_DB[user_clean]["senha"] == pass_input:
@@ -151,10 +163,8 @@ def carregar_dados_completos():
         if response.status_code == 200:
             dados_sheets = response.json()
             
-            # Rastreador para saber quais chaves (Nome, Loja) do Sheets já acharam par no Excel
             mapeados = set()
 
-            # Passagem 1: Puxa dados do Sheets para quem está ativo no Excel
             for registro in dados_sheets:
                 nome_func = registro.get('Nome')
                 try:
@@ -179,10 +189,8 @@ def carregar_dados_completos():
                     df.at[idx, 'Candidato'] = registro.get('Candidato', '-')
                     df.at[idx, 'Data Admissão'] = formatar_data_br(registro.get('Data Admissão', '-'))
                     
-                    # Registra que esse funcionário está mapeado e ativo
                     mapeados.add((nome_func, loja_reg))
 
-            # Passagem 2: Resgata quem sumiu do Excel, puxando o Nome e dados direto do Sheets
             linhas_historico = []
             for registro in dados_sheets:
                 nome_func = registro.get('Nome')
@@ -191,16 +199,15 @@ def carregar_dados_completos():
                 except:
                     loja_reg = 0
                 
-                # Se o par (Nome, Loja) do Sheets não foi mapeado, ele foi demitido/removido do Excel!
                 if (nome_func, loja_reg) not in mapeados:
                     sigla_sexo = str(registro.get('Sexo', '-')).strip()
                     sexo_exibicao = MAPA_SIGLA_SEXO.get(sigla_sexo, sigla_sexo)
                     
                     linha_órfã = {
                         'Loja': loja_reg,
-                        'Nome': nome_func, # Resgata o nome salvo no Sheets para a tabela
-                        'Situação': 'Demitido (Histórico)', # Força status para ficar vermelho
-                        'Dept': 'HISTÓRICO / EX-COLABORADORES', # Agrupa em um bloco visual próprio
+                        'Nome': nome_func, 
+                        'Situação': 'Demitido (Histórico)', 
+                        'Dept': 'HISTÓRICO / EX-COLABORADORES', 
                         'Função': 'Sem Vínculo Atual',
                         'Horario_Sistema_Real': '-',
                         'Observação': registro.get('Observação', '-'),
@@ -215,7 +222,6 @@ def carregar_dados_completos():
                     }
                     linhas_historico.append(linha_órfã)
             
-            # Se houver registros antigos no Sheets, anexa no fim do painel de forma transparente
             if linhas_historico:
                 df_historico = pd.DataFrame(linhas_historico)
                 df = pd.concat([df, df_historico], ignore_index=True)
@@ -243,7 +249,6 @@ try:
     st.sidebar.markdown(f"**Nível:** `{perfil.upper()}`")
     st.markdown("---")
 
-    # Filtro inteligente de travas por Loja
     if loja_fixa is not None:
         loja_selecionada = loja_fixa
         st.info(f"🏪 Modo de Visualização Restrito: **Loja {loja_selecionada:02d}**")
@@ -323,7 +328,6 @@ try:
             novo_candidato = st.sidebar.text_input("Candidato:", value=str(dados_func['Candidato']), disabled=True)
             nova_data_admissao = st.sidebar.text_input("Data Admissão:", value=str(dados_func['Data Admissão']), disabled=True)
         
-        # GATILHO SALVAR
         if st.sidebar.button("💾 Salvar Alterações", use_container_width=True):
             payload = {
                 "Loja": int(loja_selecionada),
@@ -419,11 +423,9 @@ try:
                 for _, row in df_filtrado.iterrows():
                     html_tabela += "<tr>"
                     
-                    # 🎨 Injeta dinamicamente a cor condicional com texto centralizado no Status
                     classe_status = obter_classe_status(row['Situação'])
                     html_tabela += f"<td {classe_status}>{row['Situação']}</td>"
                     
-                    # Renderiza o restante dos dados lineares normalmente
                     for col_nome in row.index[1:]:
                         html_tabela += f"<td>{row[col_nome]}</td>"
                         
