@@ -15,7 +15,7 @@ st.set_page_config(
     layout="wide"
 )
 
-def obtener_classe_status(status):
+def obter_classe_status(status):
     status_upper = str(status).strip().upper()
     if "ATIVO" in status_upper or "FÉRIAS" in status_upper or "FERIAS" in status_upper:
         return 'class="status-verde"'
@@ -72,23 +72,49 @@ if "logado" not in st.session_state:
     st.session_state["loja_fixa"] = None
 
 # =========================================================
-# 🔐 2. INTERFACE DA TELA DE LOGIN (FIXADO EM ESCALA DE 80%)
+# 🔐 2. INTERFACE DA TELA DE LOGIN (FONTES AMPLIADAS)
 # =========================================================
 if not st.session_state["logado"]:
     st.markdown("""
         <style>
-        /* Emula a proporção exata e confortável do zoom de 80% do navegador */
+        /* Define a escala ideal para o login */
         [data-testid="stApp"] {
-            zoom: 0.85 !important; 
+            zoom: 0.95 !important; 
         }
-        /* Define a largura do bloco central de login no esquadro ideal */
+        /* Define a largura do bloco centralizado */
         [data-testid="stColumn"] {
-            max-width: 440px !important;
+            max-width: 480px !important;
             margin: 0 auto !important;
         }
-        /* Ajuste fino nas fontes nativas dos inputs de e-mail/senha */
-        .stTextInput label { font-size: 14px !important; }
-        h1 { font-size: 34px !important; font-weight: bold; }
+        
+        /* 🚀 TURBO NAS FONTES DO LOGIN */
+        /* Titulo Principal */
+        h1 { font-size: 38px !important; font-weight: bold !important; }
+        /* Subtítulo */
+        h5 { font-size: 18px !important; color: #aaaaaa !important; }
+        
+        /* Texto dos Rótulos (E-mail corporativo / Senha de acesso) */
+        .stTextInput label p { 
+            font-size: 16px !important; 
+            font-weight: bold !important; 
+            color: #ffffff !important; 
+        }
+        
+        /* Caixas de Texto (Onde o usuário digita) */
+        .stTextInput input { 
+            font-size: 16px !important; 
+            padding: 12px 14px !important; 
+            height: 48px !important; 
+        }
+        
+        /* Botão Entrar no Sistema */
+        .stButton button { 
+            font-size: 17px !important; 
+            font-weight: bold !important; 
+            height: 50px !important; 
+            background-color: #244e73 !important;
+            border: 1px solid #444444 !important;
+        }
         </style>
         <br><br><br>
     """, unsafe_allow_html=True)
@@ -99,14 +125,14 @@ if not st.session_state["logado"]:
         if os.path.exists("passaro_logo.png"):
             col_logo_vaga, col_texto_vaga = st.columns([0.35, 1], vertical_alignment="center")
             with col_logo_vaga:
-                st.image("passaro_logo.png", width=85)
+                st.image("passaro_logo.png", width=95)
             with col_texto_vaga:
                 st.markdown("<h1 style='margin: 0; padding-left: 0;'>Molicenter - QL</h1>", unsafe_allow_html=True)
         else:
             st.markdown("<h1 style='text-align: center;'>Molicenter - QL</h1>", unsafe_allow_html=True)
         
-        st.markdown("<h5 style='text-align: center; color: #888888; margin-top: 5px; font-size: 15px;'>Quadro de Lotação</h5>", unsafe_allow_html=True)
-        st.markdown("<hr style='margin-top: 10px; margin-bottom: 25px;'>", unsafe_allow_html=True)
+        st.markdown("<h5 style='text-align: center; margin-top: 5px;'>Quadro de Lotação</h5>", unsafe_allow_html=True)
+        st.markdown("<hr style='margin-top: 10px; margin-bottom: 30px;'>", unsafe_allow_html=True)
         
         user_input = st.text_input("E-mail corporativo:")
         pass_input = st.text_input("Senha de acesso:", type="password")
@@ -130,7 +156,6 @@ if not st.session_state["logado"]:
 # =========================================================
 st.markdown("""
     <style>
-    /* Compactação milimétrica da tabela para simular 67% de zoom e evitar quebras horizontais */
     .tabela-container { width: 100%; overflow-x: auto; margin-bottom: 25px; }
     .ql-table { width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 11.5px; color: #ffffff; }
     .ql-table th, .ql-table td { border: 1px solid #444444; padding: 5px 8px; text-align: left; white-space: nowrap; }
@@ -140,7 +165,6 @@ st.markdown("""
     .status-verde { background-color: #15803d !important; color: white !important; font-weight: bold !important; text-align: center !important; }
     .status-vermelho { background-color: #b91c1c !important; color: white !important; font-weight: bold !important; text-align: center !important; }
     
-    /* Zera as margens laterais do Streamlit para aproveitar toda a largura útil da tela */
     [data-testid="stAppViewBlockContainer"] { 
         padding-left: 1.5rem !important; 
         padding-right: 1.5rem !important; 
@@ -155,7 +179,7 @@ if st.sidebar.button("🚪 Sair do Sistema"):
     st.rerun()
 
 # =========================================================
-# 📊 4. CARGA DE DADOS HÍBRIDA COM HISTÓRICO ANTI-PERDA
+# 📊 4. CARGA DE DADOS HÍBRIDA
 # =========================================================
 @st.cache_data(ttl="0d")
 def carregar_dados_completos():
