@@ -4,6 +4,35 @@ import pandas as pd
 # 1. CONFIGURAÇÃO DA PÁGINA (Estilo Dashboard em tela cheia)
 st.set_page_config(page_title="Molicenter - Quadro de Lotação", layout="wide")
 
+# Estilo global para garantir que a tabela HTML tenha rolagem horizontal se necessário e fique bonita no tema escuro
+st.markdown("""
+    <style>
+    .tabela-container {
+        width: 100%;
+        overflow-x: auto;
+        margin-bottom: 25px;
+    }
+    .ql-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: sans-serif;
+        font-size: 14px;
+        color: #ffffff;
+    }
+    .ql-table th, .ql-table td {
+        border: 1px solid #444444;
+        padding: 8px;
+        text-align: left;
+    }
+    .ql-table tr:nth-child(even) {
+        background-color: #1e1e1e;
+    }
+    .ql-table tr:nth-child(odd) {
+        background-color: #121212;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("📊 Quadro de Lotação (QL) // Requisição")
 st.markdown("---")
 
@@ -12,7 +41,7 @@ st.markdown("---")
 def carregar_dados():
     df = pd.read_excel("Banco QL.xlsx", sheet_name="Banco")
     
-    # TRATAMENTO DO HORÁRIO DO SISTEMA (Coluna L - 'Descrição (Escala)')
+    # TRATAMENTO DO HORÁRIO DO SISTEMA
     nome_coluna_horario = 'Descrição (Escala)'
     if nome_coluna_horario in df.columns:
         df['Horario_Sistema_Real'] = df[nome_coluna_horario].astype(str).str.replace('.0', '', regex=False).str.strip()
@@ -20,10 +49,9 @@ def carregar_dados():
     else:
         df['Horario_Sistema_Real'] = "-"
         
-    # CRIAÇÃO/VERIFICAÇÃO DAS 9 COLUNAS DE DIGITAÇÃO
+    # CRIAÇÃO/VERIFICAÇÃO DAS COLUNAS DE DIGITAÇÃO
     colunas_novas = [
-        'Observação', 
-        'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo', 
+        'Observação', 'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo', 
         'Status RH', 'Candidato', 'Data Admissão'
     ]
     
@@ -81,49 +109,50 @@ try:
                 st.markdown(f"**🔹 Cargo: {funcao}**")
                 df_funcao = df_dept[df_dept['Função'] == funcao]
                 
-                # Criando o DataFrame base com as colunas na ordem certa
-                tabela_base = df_funcao[[
+                # Seleciona os dados brutos na ordem correta
+                df_filtrado = df_funcao[[
                     'Situação', 'Nome', 'Horario_Sistema_Real',
                     'Observação',
                     'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo',
                     'Status RH', 'Candidato', 'Data Admissão'
-                ]].copy()
+                ]]
                 
-                # DEFINIÇÃO DOS DOIS NÍVEIS DE CABEÇALHO
-                colunas_multinivel = [
-                    ('DONO: ANALISTA', 'Status'),
-                    ('DONO: ANALISTA', 'Nome do Colaborador'),
-                    ('DONO: ANALISTA', 'Horário Sistema'),
-                    ('DONO: SUPERVISOR', 'Observação'),
-                    ('DONO: GERENTE', 'Data Abertura'),
-                    ('DONO: GERENTE', 'Responsável'),
-                    ('DONO: GERENTE', 'Horário Contrato'),
-                    ('DONO: GERENTE', 'Sexo'),
-                    ('DONO: GERENTE', 'Motivo'),
-                    ('DONO: RH', 'Status RH'),
-                    ('DONO: RH', 'Candidato'),
-                    ('DONO: RH', 'Data Admissão')
-                ]
+                # 🛠️ CONSTRUÇÃO DA TABELA EM HTML PURO PARA FORÇAR AS CORES E CENTRALIZAÇÃO
+                html_tabela = f"""
+                <div class="tabela-container">
+                    <table class="ql-table">
+                        <thead>
+                            <tr>
+                                <th colspan="3" style="background-color: #1c3d5a; color: white; text-align: center; font-weight: bold;">DONO: ANALISTA</th>
+                                <th colspan="1" style="background-color: #d97706; color: white; text-align: center; font-weight: bold;">DONO: SUPERVISOR</th>
+                                <th colspan="5" style="background-color: #15803d; color: white; text-align: center; font-weight: bold;">DONO: GERENTE</th>
+                                <th colspan="3" style="background-color: #b91c1c; color: white; text-align: center; font-weight: bold;">DONO: RH</th>
+                            </tr>
+                            <tr style="background-color: #262626; color: #dddddd;">
+                                <th>Status</th><th>Nome do Colaborador</th><th>Horário Sistema</th>
+                                <th>Observação</th>
+                                <th>Data Abertura</th><th>Responsável</th><th>Horário Contrato</th><th>Sexo</th><th>Motivo</th>
+                                <th>Status RH</th><th>Candidato</th><th>Data Admissão</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                """
                 
-                tabela_base.columns = pd.MultiIndex.from_tuples(colunas_multinivel)
-                
-                # 🎨 MAPEAMENTO DE CORES CSS COMPATÍVEL COM O COMPONENTE DATAFRAME
-                # Modifica os elementos th de nível 0 (títulos superiores) de forma indexada
-                tabela_estilizada = tabela_base.style.set_table_styles([
-                    # Estilo Geral do nível superior (Centralizar e Negrito)
-                    {'selector': 'th.col_heading.level0', 'props': [('text-align', 'center'), ('font-weight', 'bold'), ('color', 'white')]},
-                    # Estilo Geral do nível inferior (Colunas filhas)
-                    {'selector': 'th.col_heading.level1', 'props': [('text-align', 'left')]},
+                # Preenche as linhas de funcionários dinamicamente
+                for _, row in df_filtrado.iterrows():
+                    html_tabela += "<tr>"
+                    for val in row:
+                        html_tabela += f"<td>{val}</td>"
+                    html_tabela += "</tr>"
                     
-                    # Cores por bloco (utilizando classes CSS baseadas no mapeamento HTML do Pandas)
-                    {'selector': 'th.col_heading.level0.col0', 'props': [('background-color', '#1c3d5a')]}, # Analista - Azul Escuro
-                    {'selector': 'th.col_heading.level0.col3', 'props': [('background-color', '#d97706')]}, # Supervisor - Laranja
-                    {'selector': 'th.col_heading.level0.col4', 'props': [('background-color', '#15803d')]}, # Gerente - Verde
-                    {'selector': 'th.col_heading.level0.col9', 'props': [('background-color', '#b91c1c')]}, # RH - Vermelho
-                ], overwrite=False)
+                html_tabela += """
+                        </tbody>
+                    </table>
+                </div>
+                """
                 
-                # Exibe a tabela com estilos injetados de cor e centralização
-                st.dataframe(tabela_estilizada, use_container_width=True, hide_index=True)
+                # Renderiza o HTML na tela do Streamlit
+                st.markdown(html_tabela, unsafe_allow_html=True)
 
 except Exception as e:
-    st.error(f"Erro ao estilizar as cores do cabeçalho. Detalhes: {e}")
+    st.error(f"Erro ao gerar a tabela visual. Detalhes: {e}")
