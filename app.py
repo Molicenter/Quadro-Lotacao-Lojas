@@ -10,16 +10,23 @@ st.markdown("---")
 # 2. FUNÇÃO PARA CARREGAR OS DADOS DO EXCEL
 @st.cache_data
 def carregar_dados():
-    # Lê a aba 'Banco' do Excel
     df = pd.read_excel("Banco QL.xlsx", sheet_name="Banco")
     
-    # FORÇANDO A COLUNA DO HORÁRIO (Coluna I) A VIRAR TEXTO PURO
-    # A coluna I é a 9ª coluna do Excel. Vamos garantir o nome correto dela ou tratá-la.
-    if 'Escala' in df.columns:
-        df['Escala'] = df['Escala'].astype(str).str.replace('.0', '', regex=False).str.strip()
-        # Se houver valores nulos ou vazios, substitui por um traço
-        df['Escala'] = df['Escala'].apply(lambda x: '-' if x in ['nan', 'None', ''] else x)
-    
+    # Vamos descobrir qual é o nome exato da coluna de horários no seu Excel.
+    # Na imagem ela aparece como 'Escala'. Vamos forçar ela a virar texto limpo.
+    coluna_horario = None
+    for col in ['Escala', 'ESCALA', 'Horário', 'Horario']:
+        if col in df.columns:
+            coluna_horario = col
+            break
+            
+    if coluna_horario:
+        df['Horario_Tratado'] = df[coluna_horario].astype(str).str.replace('.0', '', regex=False).str.strip()
+        df['Horario_Tratado'] = df['Horario_Tratado'].apply(lambda x: '-' if x in ['nan', 'None', ''] else x)
+    else:
+        # Se não achar a coluna por nome, cria uma coluna vazia temporária para não quebrar
+        df['Horario_Tratado'] = "-"
+        
     return df
 
 try:
@@ -65,12 +72,12 @@ try:
                 st.markdown(f"**🔹 Cargo: {funcao}**")
                 df_funcao = df_dept[df_dept['Função'] == funcao]
                 
-                # Monta a tabela final garantindo a coluna de horário tratada
-                tabela_exibicao = df_funcao[['Situação', 'Nome', 'Escala']].copy()
+                # Monta a tabela final usando a coluna de horário que localizamos e tratamos
+                tabela_exibicao = df_funcao[['Situação', 'Nome', 'Horario_Tratado']].copy()
                 tabela_exibicao.columns = ['Status', 'Nome do Colaborador', 'Horário Sistema']
                 
-                # Exibe a tabela formatada
+                # Exibe a tabela sem o aviso de código legado do Streamlit
                 st.dataframe(tabela_exibicao, use_container_width=True, hide_index=True)
 
 except Exception as e:
-    st.error(f"Erro ao processar os horários do arquivo Excel. Detalhes: {e}")
+    st.error(f"Erro ao processar as colunas do Excel. Detalhes: {e}")
