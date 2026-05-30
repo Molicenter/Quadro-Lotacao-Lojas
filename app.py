@@ -128,7 +128,6 @@ def carregar_dados_completos():
                 if len(idx_list) > 0:
                     idx = idx_list[0]
                     
-                    # Converte a sigla salva no banco para o texto amigável na tabela
                     sigla_sexo = str(registro.get('Sexo', '-')).strip()
                     sexo_exibicao = MAPA_SIGLA_SEXO.get(sigla_sexo, sigla_sexo)
                     
@@ -188,7 +187,6 @@ try:
         # 🔹 BLOCO DO GERENTE
         st.sidebar.subheader("🔹 Gerente")
         if perfil in ["analista", "rh", "supervisor", "gerente"]:
-            # Data Abertura (Calendário)
             data_ab_atual = str(dados_func['Data Abertura']).strip()
             try:
                 data_ab_default = datetime.strptime(data_ab_atual, "%d/%m/%Y").date() if data_ab_atual != "-" else date.today()
@@ -200,13 +198,11 @@ try:
             novo_responsavel = st.sidebar.text_input("Responsável:", value=str(dados_func['Responsável']) if str(dados_func['Responsável']) != "-" else "")
             novo_horario_contrato = st.sidebar.text_input("Horário Contrato:", value=str(dados_func['Horário Contrato']) if str(dados_func['Horário Contrato']) != "-" else "")
             
-            # Sexo (Seletor Inteligente com Opções Amigáveis)
             sexo_exibido_atual = str(dados_func['Sexo']).strip()
             idx_sexo = OPCOES_SEXO.index(sexo_exibido_atual) if sexo_exibido_atual in OPCOES_SEXO else 0
             texto_sexo_selecionado = st.sidebar.selectbox("Sexo:", OPCOES_SEXO, index=idx_sexo)
-            novo_sexo = MAPA_SEXO_SIGLA.get(texto_sexo_selecionado, "-") # Envia sigla (I, M, F) para o banco
+            novo_sexo = MAPA_SEXO_SIGLA.get(texto_sexo_selecionado, "-")
             
-            # Motivo (Seletor Inteligente com Opções)
             motivo_atual = str(dados_func['Motivo']).strip()
             idx_motivo = OPCOES_MOTIVO.index(motivo_atual) if motivo_atual in OPCOES_MOTIVO else 0
             novo_motivo = st.sidebar.selectbox("Motivo:", OPCOES_MOTIVO, index=idx_motivo)
@@ -221,14 +217,12 @@ try:
         # 🔺 BLOCO DO RH
         st.sidebar.subheader("🔺 Recursos Humanos (RH)")
         if perfil in ["analista", "rh"]:
-            # Status RH (Seletor de Opções Solicitadas)
             status_atual = str(dados_func['Status RH']).strip()
             idx_status = OPCOES_STATUS_RH.index(status_atual) if status_atual in OPCOES_STATUS_RH else 0
             novo_status_rh = st.sidebar.selectbox("Status RH:", OPCOES_STATUS_RH, index=idx_status)
             
             novo_candidato = st.sidebar.text_input("Candidato:", value=str(dados_func['Candidato']) if str(dados_func['Candidato']) != "-" else "")
             
-            # Data Admissão (Calendário Oficial Novo)
             data_ad_atual = str(dados_func['Data Admissão']).strip()
             try:
                 data_ad_default = datetime.strptime(data_ad_atual, "%d/%m/%Y").date() if data_ad_atual != "-" else date.today()
@@ -306,21 +300,32 @@ try:
                     'Status RH', 'Candidato', 'Data Admissão'
                 ]]
                 
+                # HTML CUSTOMIZADO COM AS SUB-CORES COMBINANDO COM O DONO
                 html_tabela = f"""
                 <div class="tabela-container">
                     <table class="ql-table">
                         <thead>
+                            <!-- LINHA 1: DONOS DO BLOCO -->
                             <tr>
-                                <th colspan="3" style="background-color: #1c3d5a; color: white; text-align: center; font-weight: bold;">DONO: ANALISTA</th>
-                                <th colspan="1" style="background-color: #d97706; color: white; text-align: center; font-weight: bold;">DONO: SUPERVISOR</th>
-                                <th colspan="5" style="background-color: #15803d; color: white; text-align: center; font-weight: bold;">DONO: GERENTE</th>
-                                <th colspan="3" style="background-color: #b91c1c; color: white; text-align: center; font-weight: bold;">DONO: RH</th>
+                                <th colspan="3" style="background-color: #1c3d5a; color: white; text-align: center; font-weight: bold; border-bottom: none;">DONO: ANALISTA</th>
+                                <th colspan="1" style="background-color: #d97706; color: white; text-align: center; font-weight: bold; border-bottom: none;">DONO: SUPERVISOR</th>
+                                <th colspan="5" style="background-color: #15803d; color: white; text-align: center; font-weight: bold; border-bottom: none;">DONO: GERENTE</th>
+                                <th colspan="3" style="background-color: #b91c1c; color: white; text-align: center; font-weight: bold; border-bottom: none;">DONO: RH</th>
                             </tr>
-                            <tr style="background-color: #262626; color: #dddddd;">
-                                <th>Status</th><th>Nome do Colaborador</th><th>Horário Sistema</th>
-                                <th>Observação</th>
-                                <th>Data Abertura</th><th>Responsável</th><th>Horário Contrato</th><th>Sexo</th><th>Motivo</th>
-                                <th>Status RH</th><th>Candidato</th><th>Data Admissão</th>
+                            <!-- LINHA 2: COLUNAS SEGUINDO AS MESMAS CORES DO TOP DE FORMA SUAVE -->
+                            <tr style="color: #ffffff; font-weight: bold;">
+                                <th style="background-color: #244e73; border-top: none;">Status</th>
+                                <th style="background-color: #244e73; border-top: none;">Nome do Colaborador</th>
+                                <th style="background-color: #244e73; border-top: none;">Horário Sistema</th>
+                                <th style="background-color: #b36205; border-top: none;">Observação</th>
+                                <th style="background-color: #116631; border-top: none;">Data Abertura</th>
+                                <th style="background-color: #116631; border-top: none;">Responsável</th>
+                                <th style="background-color: #116631; border-top: none;">Horário Contrato</th>
+                                <th style="background-color: #116631; border-top: none;">Sexo</th>
+                                <th style="background-color: #116631; border-top: none;">Motivo</th>
+                                <th style="background-color: #941616; border-top: none;">Status RH</th>
+                                <th style="background-color: #941616; border-top: none;">Candidato</th>
+                                <th style="background-color: #941616; border-top: none;">Data Admissão</th>
                             </tr>
                         </thead>
                         <tbody>
