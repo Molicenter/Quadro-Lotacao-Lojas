@@ -16,7 +16,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# FUNÇÃO CONDICIONAL DE CORES DO STATUS (Precisa ficar no topo)
+# FUNÇÃO CONDICIONAL DE CORES DO STATUS
 def obter_classe_status(status):
     status_upper = str(status).strip().upper()
     if "ATIVO" in status_upper or "FÉRIAS" in status_upper or "FERIAS" in status_upper:
@@ -128,7 +128,7 @@ if st.sidebar.button("🚪 Sair do Sistema"):
     st.rerun()
 
 # =========================================================
-# 📊 3. FUNÇÃO DE CARGA E PROCESSO CRUZADO DE DADOS
+# 📊 3. FUNÇÃO DE CARGA E PROCESSO CRUZADO DE DADOS (HÍBRIDA)
 # =========================================================
 @st.cache_data(ttl="0d")
 def carregar_dados_completos():
@@ -150,6 +150,11 @@ def carregar_dados_completos():
         response = requests.get(URL_API_SHEETS, timeout=10)
         if response.status_code == 200:
             dados_sheets = response.json()
+            
+            # Rastreador para saber quais chaves (Nome, Loja) do Sheets já acharam par no Excel
+            mapeados = set()
+
+            # Passagem 1: Puxa dados do Sheets para quem está ativo no Excel
             for registro in dados_sheets:
                 nome_func = registro.get('Nome')
                 try:
@@ -173,7 +178,49 @@ def carregar_dados_completos():
                     df.at[idx, 'Status RH'] = registro.get('Status RH', '-')
                     df.at[idx, 'Candidato'] = registro.get('Candidato', '-')
                     df.at[idx, 'Data Admissão'] = formatar_data_br(registro.get('Data Admissão', '-'))
-    except:
+                    
+                    # Registra que esse funcionário está mapeado e ativo
+                    mapeados.add((nome_func, loja_reg))
+
+            # Passagem 2: Resgata quem sumiu do Excel, puxando o Nome e dados direto do Sheets
+            linhas_historico = []
+            for registro in dados_sheets:
+                nome_func = registro.get('Nome')
+                try:
+                    loja_reg = int(float(str(registro.get('Loja', 0))))
+                except:
+                    loja_reg = 0
+                
+                # Se o par (Nome, Loja) do Sheets não foi mapeado, ele foi demitido/removido do Excel!
+                if (nome_func, loja_reg) not in mapeados:
+                    sigla_sexo = str(registro.get('Sexo', '-')).strip()
+                    sexo_exibicao = MAPA_SIGLA_SEXO.get(sigla_sexo, sigla_sexo)
+                    
+                    linha_órfã = {
+                        'Loja': loja_reg,
+                        'Nome': nome_func, # Resgata o nome salvo no Sheets para a tabela
+                        'Situação': 'Demitido (Histórico)', # Força status para ficar vermelho
+                        'Dept': 'HISTÓRICO / EX-COLABORADORES', # Agrupa em um bloco visual próprio
+                        'Função': 'Sem Vínculo Atual',
+                        'Horario_Sistema_Real': '-',
+                        'Observação': registro.get('Observação', '-'),
+                        'Data Abertura': formatar_data_br(registro.get('Data Abertura', '-')),
+                        'Responsável': registro.get('Responsável', '-'),
+                        'Horário Contrato': registro.get('Horário Contrato', '-'),
+                        'Sexo': sexo_exibicao,
+                        'Motivo': registro.get('Motivo', '-'),
+                        'Status RH': registro.get('Status RH', '-'),
+                        'Candidato': registro.get('Candidato', '-'),
+                        'Data Admissão': formatar_data_br(registro.get('Data Admissão', '-'))
+                    }
+                    linhas_historico.append(linha_órfã)
+            
+            # Se houver registros antigos no Sheets, anexa no fim do painel de forma transparente
+            if linhas_historico:
+                df_historico = pd.DataFrame(linhas_historico)
+                df = pd.concat([df, df_historico], ignore_index=True)
+                
+    except Exception as e:
         pass
 
     return df
@@ -306,7 +353,7 @@ try:
                 st.sidebar.error(f"Erro de conexão: {e}")
 
     # =========================================================
-    # 🏪 5. INDICADORES E MATRIZ VISUAL CENTRAL (TABELAS HTML)
+    # 🏪 5. INDICADORES E MATRIZ VISUAL CENTRAL
     # =========================================================
     st.markdown(f"### 🏪 Quadro de Funcionários - Loja {int(loja_selecionada):02d}")
 
