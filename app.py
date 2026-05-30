@@ -5,7 +5,7 @@ import json
 from datetime import datetime, date
 import os
 
-# 1. CONFIGURAÇÃO DA PÁGINA (Com o novo título e o passarinho no ícone da aba)
+# 1. CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(
     page_title="Molicenter - QL (Quadro de Lotação)", 
     page_icon="passaro_logo.png" if os.path.exists("passaro_logo.png") else "📊",
@@ -22,10 +22,14 @@ st.markdown("""
     .ql-table th, .ql-table td { border: 1px solid #444444; padding: 10px 14px; text-align: left; white-space: nowrap; }
     .ql-table tr:nth-child(even) { background-color: #1e1e1e; }
     .ql-table tr:nth-child(odd) { background-color: #121212; }
+    
+    /* Classes para a formatação condicional do Status */
+    .status-verde { background-color: #15803d !important; color: white; font-weight: bold; text-align: center; }
+    .status-vermelho { background-color: #b91c1c !important; color: white; font-weight: bold; text-align: center; }
     </style>
 """, unsafe_allow_html=True)
 
-# DICIONÁRIO DE USUÁRIOS, SENHAS E PERMISSÕES (Matriz de Perfil)
+# DICIONÁRIO DE USUÁRIOS, SENHAS E PERMISSÕES
 USUARIOS_DB = {
     "analista@molicenter.com.br": {"senha": "moli1234", "perfil": "analista", "loja_fixa": None},
     "rh1@molicenter.com.br": {"senha": "moli1234", "perfil": "rh", "loja_fixa": None},
@@ -40,7 +44,6 @@ USUARIOS_DB = {
     "gerente8@molicenter.com.br": {"senha": "moli1234", "perfil": "gerente", "loja_fixa": 8},
 }
 
-# LISTAS DE OPÇÕES PADRONIZADAS
 OPCOES_SEXO = ["-", "Indiferente", "Masculino", "Feminino"]
 MAPA_SEXO_SIGLA = {"-": "-", "Indiferente": "I", "Masculino": "M", "Feminino": "F"}
 MAPA_SIGLA_SEXO = {"-": "-", "I": "Indiferente", "M": "Masculino", "F": "Feminino"}
@@ -54,7 +57,6 @@ OPCOES_STATUS_RH = [
     "Triagem de Curriculuns", "Validado pelo gerente", "Desistencia Candidato"
 ]
 
-# GERENCIAMENTO DE ESTADO DO LOGIN
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
     st.session_state["usuario"] = ""
@@ -63,11 +65,10 @@ if "logado" not in st.session_state:
 
 # INTERFACE DA TELA DE LOGIN
 if not st.session_state["logado"]:
-    # Proporções ajustadas para dar mais espaço físico ao passarinho
     col_logo_top, col_title_top = st.columns([0.4, 2.5], vertical_alignment="center")
     with col_logo_top:
         if os.path.exists("passaro_logo.png"):
-            st.image("passaro_logo.png", width=110) # Tamanho ampliado de 55px para 110px
+            st.image("passaro_logo.png", width=110)
     with col_title_top:
         st.title("Molicenter - QL (Quadro de Lotação)")
     
@@ -95,7 +96,6 @@ if st.sidebar.button("🚪 Sair do Sistema"):
     st.session_state["logado"] = False
     st.rerun()
 
-# FUNÇÃO DE FORMATAÇÃO DE DATAS PARA EXIBIÇÃO NA TABELA
 def formatar_data_br(valor):
     val_str = str(valor).strip()
     if val_str in ["nan", "None", "", "-", "0"]:
@@ -107,6 +107,15 @@ def formatar_data_br(valor):
         return dt.strftime("%d/%m/%Y")
     except:
         return val_str
+
+# FUNÇÃO AUXILIAR PARA RETORNAR A CLASSE CSS DO STATUS
+def obter_classe_status(status):
+    status_upper = str(status).strip().upper()
+    if "ATIVO" in status_upper or "FÉRIAS" in status_upper or "FERIAS" in status_upper:
+        return 'class="status-verde"'
+    elif "AFASTAMENTO" in status_upper or "AFASTADO" in status_upper or "DEMITIDO" in status_upper:
+        return 'class="status-vermelho"'
+    return ""
 
 # 3. FUNÇÃO HÍBRIDA DE CARGA DE DADOS
 @st.cache_data(ttl="0d")
@@ -163,11 +172,10 @@ try:
     perfil = st.session_state["perfil"]
     loja_fixa = st.session_state["loja_fixa"]
 
-    # Tela interna principal com a logo ampliada e alinhada também
     col_main_logo, col_main_title = st.columns([0.4, 2.5], vertical_alignment="center")
     with col_main_logo:
         if os.path.exists("passaro_logo.png"):
-            st.image("passaro_logo.png", width=100) # Tamanho interno ampliado para 100px
+            st.image("passaro_logo.png", width=100)
     with col_main_title:
         st.title("Molicenter - QL (Quadro de Lotação)")
         
@@ -195,7 +203,6 @@ try:
         dados_func = df_loja[df_loja['Nome'] == colaborador_selecionado].iloc[0]
         st.sidebar.markdown("---")
         
-        # 🔸 BLOCO DO SUPERVISOR
         st.sidebar.subheader("🔸 Supervisor")
         if perfil in ["analista", "rh", "supervisor"]:
             nova_obs = st.sidebar.text_area("Observação:", value=str(dados_func['Observação']) if str(dados_func['Observação']) != "-" else "")
@@ -203,7 +210,6 @@ try:
             st.sidebar.text_input("Observação:", value=str(dados_func['Observação']), disabled=True)
             nova_obs = str(dados_func['Observação'])
         
-        # 🔹 BLOCO DO GERENTE
         st.sidebar.subheader("🔹 Gerente")
         if perfil in ["analista", "rh", "supervisor", "gerente"]:
             data_ab_atual = str(dados_func['Data Abertura']).strip()
@@ -233,7 +239,6 @@ try:
             novo_sexo = MAPA_SEXO_SIGLA.get(novo_sexo_exibido, "-")
             novo_motivo = st.sidebar.text_input("Motivo:", value=str(dados_func['Motivo']), disabled=True)
         
-        # 🔺 BLOCO DO RH
         st.sidebar.subheader("🔺 Recursos Humanos (RH)")
         if perfil in ["analista", "rh"]:
             status_atual = str(dados_func['Status RH']).strip()
@@ -254,7 +259,6 @@ try:
             novo_candidato = st.sidebar.text_input("Candidato:", value=str(dados_func['Candidato']), disabled=True)
             nova_data_admissao = st.sidebar.text_input("Data Admissão:", value=str(dados_func['Data Admissão']), disabled=True)
         
-        # BOTÃO SALVAR
         if st.sidebar.button("💾 Salvar Alterações", use_container_width=True):
             payload = {
                 "Loja": int(loja_selecionada),
@@ -262,7 +266,7 @@ try:
                 "Observacao": nova_obs,
                 "DataAbertura": nova_data_abertura,
                 "Responsavel": novo_responsavel,
-                "HorarioContrato": nova_data_abertura, # Mantido padrão mapeado
+                "HorarioContrato": novo_horario_contrato,
                 "Sexo": novo_sexo,
                 "Motivo": novo_motivo,
                 "StatusRH": novo_status_rh,
@@ -349,8 +353,15 @@ try:
                 
                 for _, row in df_filtrado.iterrows():
                     html_tabela += "<tr>"
-                    for val in row:
-                        html_tabela += f"<td>{val}</td>"
+                    
+                    # Aplica a classe condicional especificamente na primeira coluna (Status / Situação)
+                    classe_status = obter_classe_status(row['Situação'])
+                    html_tabela += f"<td {classe_status}>{row['Situação']}</td>"
+                    
+                    # Renderiza o restante das colunas normalmente
+                    for col_nome in row.index[1:]:
+                        html_tabela += f"<td>{row[col_nome]}</td>"
+                        
                     html_tabela += "</tr>"
                     
                 html_tabela += """
