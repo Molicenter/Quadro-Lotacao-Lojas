@@ -20,7 +20,7 @@ def carregar_dados():
     else:
         df['Horario_Sistema_Real'] = "-"
         
-    # CRIAÇÃO/VERIFICAÇÃO DAS 9 COLUNAS CONFORME A NOVA DISTRIBUIÇÃO DE PAPÉIS
+    # CRIAÇÃO/VERIFICAÇÃO DAS 9 COLUNAS DE DIGITAÇÃO
     colunas_novas = [
         'Observação', 
         'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo', 
@@ -29,13 +29,11 @@ def carregar_dados():
     
     for col in colunas_novas:
         if col not in df.columns:
-            # Vincula a coluna 'Situação.1' caso ela represente o Status do RH no Excel original
             if col == 'Status RH' and 'Situação.1' in df.columns:
                 df['Status RH'] = df['Situação.1'].fillna('-')
             else:
-                df[col] = "-" # Cria a coluna com traço padrão se estiver ausente
+                df[col] = "-"
         else:
-            # Se já existir, remove decimais (.0) e preenche vazios com traço para limpar o layout
             df[col] = df[col].fillna("-").astype(str).str.replace('.0', '', regex=False)
             
     return df
@@ -55,7 +53,7 @@ try:
 
     st.markdown(f"### 🏪 Quadro de Funcionários - Loja {int(loja_selecionada):02d}")
 
-    # 4. INDICADORES DO TOPO (Gerais da Loja)
+    # 4. INDICADORES DO TOPO
     df_loja['Situação_Upper'] = df_loja['Situação'].astype(str).str.upper()
     
     ativos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('ATIVO')])
@@ -83,24 +81,39 @@ try:
                 st.markdown(f"**🔹 Cargo: {funcao}**")
                 df_funcao = df_dept[df_dept['Função'] == funcao]
                 
-                # ESTRUTURAÇÃO DE COLUNAS SEGUINDO A NOVA LÓGICA SOLICITADA
-                tabela_exibicao = df_funcao[[
-                    'Situação', 'Nome', 'Horario_Sistema_Real',       # Analista (Você)
-                    'Observação',                                     # Supervisor
-                    'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo', # Gerente
-                    'Status RH', 'Candidato', 'Data Admissão'         # RH
-                ]].copy()
-                
-                # Renomeando os cabeçalhos para exibição amigável e idêntica na tela
-                tabela_exibicao.columns = [
-                    'Status', 'Nome do Colaborador', 'Horário Sistema',
+                # Criando o DataFrame base com as colunas na ordem certa
+                tabela_base = df_funcao[[
+                    'Situação', 'Nome', 'Horario_Sistema_Real',
                     'Observação',
                     'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo',
                     'Status RH', 'Candidato', 'Data Admissão'
+                ]].copy()
+                
+                # 📊 DEFINIÇÃO CLARA DOS DOIS NÍVEIS DE CABEÇALHO
+                colunas_multinivel = [
+                    ('DONO: ANALISTA', 'Status'),
+                    ('DONO: ANALISTA', 'Nome do Colaborador'),
+                    ('DONO: ANALISTA', 'Horário Sistema'),
+                    ('DONO: SUPERVISOR', 'Observação'),
+                    ('DONO: GERENTE', 'Data Abertura'),
+                    ('DONO: GERENTE', 'Responsável'),
+                    ('DONO: GERENTE', 'Horário Contrato'),
+                    ('DONO: GERENTE', 'Sexo'),
+                    ('DONO: GERENTE', 'Motivo'),
+                    ('DONO: RH', 'Status RH'),
+                    ('DONO: RH', 'Candidato'),
+                    ('DONO: RH', 'Data Admissão')
                 ]
                 
-                # Exibe a tabela larga com barra de rolagem horizontal responsiva
-                st.dataframe(tabela_exibicao, use_container_width=True, hide_index=True)
+                tabela_base.columns = pd.MultiIndex.from_tuples(colunas_multinivel)
+                
+                # 🔥 O PULO DO GATO: Usamos o .style para forçar o Streamlit a renderizar os dois níveis de títulos na tela
+                tabela_estilizada = tabela_base.style.set_table_styles([
+                    {'selector': 'th.col_heading.level0', 'props': [('background-color', '#1f77b4'), ('color', 'white'), ('font-weight', 'bold'), ('text-align', 'center')]}
+                ])
+                
+                # Exibe a tabela estruturada garantindo que o primeiro nível apareça
+                st.dataframe(tabela_estilizada, use_container_width=True, hide_index=True)
 
 except Exception as e:
-    st.error(f"Erro ao estruturar a nova lógica de colunas. Detalhes: {e}")
+    st.error(f"Erro ao estruturar o cabeçalho multinível. Detalhes: {e}")
