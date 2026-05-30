@@ -12,20 +12,13 @@ st.markdown("---")
 def carregar_dados():
     df = pd.read_excel("Banco QL.xlsx", sheet_name="Banco")
     
-    # Vamos descobrir qual é o nome exato da coluna de horários no seu Excel.
-    # Na imagem ela aparece como 'Escala'. Vamos forçar ela a virar texto limpo.
-    coluna_horario = None
-    for col in ['Escala', 'ESCALA', 'Horário', 'Horario']:
-        if col in df.columns:
-            coluna_horario = col
-            break
-            
-    if coluna_horario:
-        df['Horario_Tratado'] = df[coluna_horario].astype(str).str.replace('.0', '', regex=False).str.strip()
-        df['Horario_Tratado'] = df['Horario_Tratado'].apply(lambda x: '-' if x in ['nan', 'None', ''] else x)
-    else:
-        # Se não achar a coluna por nome, cria uma coluna vazia temporária para não quebrar
-        df['Horario_Tratado'] = "-"
+    # TRAVANDO NA COLUNA L (A 12ª coluna do Excel é o índice 11 no Python)
+    # Vamos criar a coluna 'Horario_Sistema_Real' pegando direto os dados da coluna L
+    try:
+        df['Horario_Sistema_Real'] = df.iloc[:, 11].astype(str).str.replace('.0', '', regex=False).str.strip()
+        df['Horario_Sistema_Real'] = df['Horario_Sistema_Real'].apply(lambda x: '-' if x in ['nan', 'None', ''] else x)
+    except Exception as e:
+        df['Horario_Sistema_Real'] = "-"
         
     return df
 
@@ -72,11 +65,11 @@ try:
                 st.markdown(f"**🔹 Cargo: {funcao}**")
                 df_funcao = df_dept[df_dept['Função'] == funcao]
                 
-                # Monta a tabela final usando a coluna de horário que localizamos e tratamos
-                tabela_exibicao = df_funcao[['Situação', 'Nome', 'Horario_Tratado']].copy()
+                # Monta a tabela final buscando a coluna L que tratamos por posição
+                tabela_exibicao = df_funcao[['Situação', 'Nome', 'Horario_Sistema_Real']].copy()
                 tabela_exibicao.columns = ['Status', 'Nome do Colaborador', 'Horário Sistema']
                 
-                # Exibe a tabela sem o aviso de código legado do Streamlit
+                # Exibe a tabela na tela
                 st.dataframe(tabela_exibicao, use_container_width=True, hide_index=True)
 
 except Exception as e:
