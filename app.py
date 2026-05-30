@@ -72,42 +72,21 @@ if "logado" not in st.session_state:
     st.session_state["loja_fixa"] = None
 
 # =========================================================
-# 🔐 2. INTERFACE DA TELA DE LOGIN (FONTES AMPLIADAS)
+# 🔐 2. INTERFACE DA TELA DE LOGIN (FONTES GRANDES - DO SEU JEITO)
 # =========================================================
 if not st.session_state["logado"]:
     st.markdown("""
         <style>
-        /* Define a escala ideal para o login */
-        [data-testid="stApp"] {
-            zoom: 0.95 !important; 
-        }
-        /* Define a largura do bloco centralizado */
         [data-testid="stColumn"] {
             max-width: 480px !important;
             margin: 0 auto !important;
         }
-        
-        /* 🚀 TURBO NAS FONTES DO LOGIN */
-        /* Titulo Principal */
         h1 { font-size: 38px !important; font-weight: bold !important; }
-        /* Subtítulo */
         h5 { font-size: 18px !important; color: #aaaaaa !important; }
         
-        /* Texto dos Rótulos (E-mail corporativo / Senha de acesso) */
-        .stTextInput label p { 
-            font-size: 16px !important; 
-            font-weight: bold !important; 
-            color: #ffffff !important; 
-        }
+        .stTextInput label p { font-size: 16px !important; font-weight: bold !important; color: #ffffff !important; }
+        .stTextInput input { font-size: 16px !important; padding: 12px 14px !important; height: 48px !important; }
         
-        /* Caixas de Texto (Onde o usuário digita) */
-        .stTextInput input { 
-            font-size: 16px !important; 
-            padding: 12px 14px !important; 
-            height: 48px !important; 
-        }
-        
-        /* Botão Entrar no Sistema */
         .stButton button { 
             font-size: 17px !important; 
             font-weight: bold !important; 
@@ -152,25 +131,36 @@ if not st.session_state["logado"]:
     st.stop()
 
 # =========================================================
-# 📊 3. CSS DO DASHBOARD (COMPACTAÇÃO TIPO ZOOM 67%)
+# 📊 3. CSS DO DASHBOARD INTERNAL (COMPACTAÇÃO COMPLETA TIPO ZOOM 67%)
 # =========================================================
 st.markdown("""
     <style>
-    .tabela-container { width: 100%; overflow-x: auto; margin-bottom: 25px; }
-    .ql-table { width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 11.5px; color: #ffffff; }
-    .ql-table th, .ql-table td { border: 1px solid #444444; padding: 5px 8px; text-align: left; white-space: nowrap; }
+    /* Força o painel inteiro a reduzir sua escala de densidade para simular zoom de 67% */
+    [data-testid="stApp"] {
+        zoom: 0.82 !important;
+    }
+    
+    /* Compactação máxima das fontes e paddings das tabelas HTML */
+    .tabela-container { width: 100%; overflow-x: auto; margin-bottom: 20px; }
+    .ql-table { width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 11px; color: #ffffff; }
+    .ql-table th, .ql-table td { border: 1px solid #444444; padding: 4px 6px; text-align: left; white-space: nowrap; }
     .ql-table tr:nth-child(even) { background-color: #1e1e1e; }
     .ql-table tr:nth-child(odd) { background-color: #121212; }
     
     .status-verde { background-color: #15803d !important; color: white !important; font-weight: bold !important; text-align: center !important; }
     .status-vermelho { background-color: #b91c1c !important; color: white !important; font-weight: bold !important; text-align: center !important; }
     
+    /* Estica a área de trabalho para as bordas */
     [data-testid="stAppViewBlockContainer"] { 
-        padding-left: 1.5rem !important; 
-        padding-right: 1.5rem !important; 
-        padding-top: 1.5rem !important; 
+        padding-left: 1rem !important; 
+        padding-right: 1rem !important; 
+        padding-top: 1rem !important; 
         max-width: 100% !important;
     }
+    
+    /* Encolhe os indicadores de métricas do topo do painel */
+    [data-testid="stMetricValue"] { font-size: 24px !important; }
+    [data-testid="stMetricLabel"] { font-size: 13px !important; }
     </style>
 """, unsafe_allow_html=True)
 
