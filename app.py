@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-# 1. CONFIGURAÇÃO DA PÁGINA
+# 1. CONFIGURAÇÃO DA PÁGINA (Estilo Dashboard em tela cheia)
 st.set_page_config(page_title="Molicenter - Quadro de Lotação", layout="wide")
 
 st.title("📊 Quadro de Lotação (QL) // Requisição")
@@ -11,18 +11,22 @@ st.markdown("---")
 @st.cache_data
 def carregar_dados():
     df = pd.read_excel("Banco QL.xlsx", sheet_name="Banco")
+    
+    # MAPEAMENTO DEFINITIVO DA COLUNA DE HORÁRIOS
+    # Usando o nome exato identificado no mapeamento: 'Descrição (Escala)'
+    nome_coluna_horario = 'Descrição (Escala)'
+    
+    if nome_coluna_horario in df.columns:
+        df['Horario_Sistema_Real'] = df[nome_coluna_horario].astype(str).str.replace('.0', '', regex=False).str.strip()
+        df['Horario_Sistema_Real'] = df['Horario_Sistema_Real'].apply(lambda x: '-' if x in ['nan', 'None', ''] else x)
+    else:
+        # Fallback de segurança caso o cabeçalho mude
+        df['Horario_Sistema_Real'] = "-"
+        
     return df
 
 try:
     df_bruto = carregar_dados()
-
-    # --- DIAGNÓSTICO: MOSTRAR COLUNAS NA TELA ---
-    st.warning("🔍 Lista de colunas encontradas no seu Excel (Mapeamento):")
-    # Cria um dicionário mostrando o número da coluna e o nome dela para sabermos quem é quem
-    mapa_colunas = {f"Posição {i} (Letra no Pandas)": col for i, col in enumerate(df_bruto.columns)}
-    st.json(mapa_colunas)
-    st.markdown("---")
-    # --------------------------------------------
 
     # 3. FILTRO DE LOJA
     lojas_disponiveis = sorted(df_bruto['Loja'].dropna().unique())
@@ -36,7 +40,7 @@ try:
 
     st.markdown(f"### 🏪 Quadro de Funcionários - Loja {int(loja_selecionada):02d}")
 
-    # 4. INDICADORES DO TOPO
+    # 4. INDICADORES DO TOPO (Gerais da Loja)
     df_loja['Situação_Upper'] = df_loja['Situação'].astype(str).str.upper()
     
     ativos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('ATIVO')])
@@ -64,10 +68,11 @@ try:
                 st.markdown(f"**🔹 Cargo: {funcao}**")
                 df_funcao = df_dept[df_dept['Função'] == funcao]
                 
-                # Exibindo temporariamente uma coluna padrão para o app não quebrar enquanto diagnosticamos
-                tabela_exibicao = df_funcao[['Situação', 'Nome']].copy()
-                tabela_exibicao.columns = ['Status', 'Nome do Colaborador']
+                # Monta a tabela final com as colunas certas mapeadas
+                tabela_exibicao = df_funcao[['Situação', 'Nome', 'Horario_Sistema_Real']].copy()
+                tabela_exibicao.columns = ['Status', 'Nome do Colaborador', 'Horário Sistema']
                 
+                # Exibe a tabela na tela de forma limpa
                 st.dataframe(tabela_exibicao, use_container_width=True, hide_index=True)
 
 except Exception as e:
