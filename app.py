@@ -4,7 +4,7 @@ import pandas as pd
 # 1. CONFIGURAÇÃO DA PÁGINA (Estilo Dashboard em tela cheia)
 st.set_page_config(page_title="Molicenter - Quadro de Lotação", layout="wide")
 
-# Estilo global para garantir que a tabela HTML tenha rolagem horizontal se necessário e fique bonita no tema escuro
+# Estilo global das tabelas em HTML
 st.markdown("""
     <style>
     .tabela-container {
@@ -41,7 +41,7 @@ st.markdown("---")
 def carregar_dados():
     df = pd.read_excel("Banco QL.xlsx", sheet_name="Banco")
     
-    # TRATAMENTO DO HORÁRIO DO SISTEMA
+    # TRATAMENTO DO HORÁRIO DO SISTEMA (Coluna L)
     nome_coluna_horario = 'Descrição (Escala)'
     if nome_coluna_horario in df.columns:
         df['Horario_Sistema_Real'] = df[nome_coluna_horario].astype(str).str.replace('.0', '', regex=False).str.strip()
@@ -49,20 +49,16 @@ def carregar_dados():
     else:
         df['Horario_Sistema_Real'] = "-"
         
-    # CRIAÇÃO/VERIFICAÇÃO DAS COLUNAS DE DIGITAÇÃO
+    # FORÇANDO TODAS AS 9 COLUNAS DE DIGITAÇÃO A FICAREM ZERADAS/LIMPAS
     colunas_novas = [
-        'Observação', 'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo', 
+        'Observação', 
+        'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo', 
         'Status RH', 'Candidato', 'Data Admissão'
     ]
     
+    # Aqui garantimos que elas nasçam zeradas para digitação, ignorando qualquer herança do Excel original
     for col in colunas_novas:
-        if col not in df.columns:
-            if col == 'Status RH' and 'Situação.1' in df.columns:
-                df['Status RH'] = df['Situação.1'].fillna('-')
-            else:
-                df[col] = "-"
-        else:
-            df[col] = df[col].fillna("-").astype(str).str.replace('.0', '', regex=False)
+        df[col] = "-"
             
     return df
 
@@ -109,7 +105,7 @@ try:
                 st.markdown(f"**🔹 Cargo: {funcao}**")
                 df_funcao = df_dept[df_dept['Função'] == funcao]
                 
-                # Seleciona os dados brutos na ordem correta
+                # Monta os dados na tabela HTML
                 df_filtrado = df_funcao[[
                     'Situação', 'Nome', 'Horario_Sistema_Real',
                     'Observação',
@@ -117,7 +113,6 @@ try:
                     'Status RH', 'Candidato', 'Data Admissão'
                 ]]
                 
-                # 🛠️ CONSTRUÇÃO DA TABELA EM HTML PURO PARA FORÇAR AS CORES E CENTRALIZAÇÃO
                 html_tabela = f"""
                 <div class="tabela-container">
                     <table class="ql-table">
@@ -138,7 +133,6 @@ try:
                         <tbody>
                 """
                 
-                # Preenche as linhas de funcionários dinamicamente
                 for _, row in df_filtrado.iterrows():
                     html_tabela += "<tr>"
                     for val in row:
@@ -150,8 +144,6 @@ try:
                     </table>
                 </div>
                 """
-                
-                # Renderiza o HTML na tela do Streamlit
                 st.markdown(html_tabela, unsafe_allow_html=True)
 
 except Exception as e:
