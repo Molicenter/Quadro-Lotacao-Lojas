@@ -5,7 +5,7 @@ import json
 from datetime import datetime, date
 import os
 
-# 1. CONFIGURAÇÃO DA PÁGINA
+# 1. CONFIGURAÇÃO DA PÁGINA (Com o novo título e o passarinho no ícone da aba)
 st.set_page_config(
     page_title="Molicenter - QL (Quadro de Lotação)", 
     page_icon="passaro_logo.png" if os.path.exists("passaro_logo.png") else "📊",
@@ -23,13 +23,13 @@ st.markdown("""
     .ql-table tr:nth-child(even) { background-color: #1e1e1e; }
     .ql-table tr:nth-child(odd) { background-color: #121212; }
     
-    /* Classes para a formatação condicional do Status */
-    .status-verde { background-color: #15803d !important; color: white; font-weight: bold; text-align: center; }
-    .status-vermelho { background-color: #b91c1c !important; color: white; font-weight: bold; text-align: center; }
+    /* Classes corrigidas para centralizar o texto junto com a cor condicional */
+    .status-verde { background-color: #15803d !important; color: white !important; font-weight: bold !important; text-align: center !important; }
+    .status-vermelho { background-color: #b91c1c !important; color: white !important; font-weight: bold !important; text-align: center !important; }
     </style>
 """, unsafe_allow_html=True)
 
-# DICIONÁRIO DE USUÁRIOS, SENHAS E PERMISSÕES
+# DICIONÁRIO DE USUÁRIOS, SENHAS E PERMISSÕES (Matriz de Perfil)
 USUARIOS_DB = {
     "analista@molicenter.com.br": {"senha": "moli1234", "perfil": "analista", "loja_fixa": None},
     "rh1@molicenter.com.br": {"senha": "moli1234", "perfil": "rh", "loja_fixa": None},
@@ -44,6 +44,7 @@ USUARIOS_DB = {
     "gerente8@molicenter.com.br": {"senha": "moli1234", "perfil": "gerente", "loja_fixa": 8},
 }
 
+# LISTAS DE OPÇÕES PADRONIZADAS
 OPCOES_SEXO = ["-", "Indiferente", "Masculino", "Feminino"]
 MAPA_SEXO_SIGLA = {"-": "-", "Indiferente": "I", "Masculino": "M", "Feminino": "F"}
 MAPA_SIGLA_SEXO = {"-": "-", "I": "Indiferente", "M": "Masculino", "F": "Feminino"}
@@ -57,6 +58,7 @@ OPCOES_STATUS_RH = [
     "Triagem de Curriculuns", "Validado pelo gerente", "Desistencia Candidato"
 ]
 
+# GERENCIAMENTO DE ESTADO DO LOGIN
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
     st.session_state["usuario"] = ""
@@ -96,6 +98,7 @@ if st.sidebar.button("🚪 Sair do Sistema"):
     st.session_state["logado"] = False
     st.rerun()
 
+# FUNÇÃO DE FORMATAÇÃO DE DATAS PARA EXIBIÇÃO NA TABELA
 def formatar_data_br(valor):
     val_str = str(valor).strip()
     if val_str in ["nan", "None", "", "-", "0"]:
@@ -108,8 +111,8 @@ def formatar_data_br(valor):
     except:
         return val_str
 
-# FUNÇÃO AUXILIAR PARA RETORNAR A CLASSE CSS DO STATUS
-def obter_classe_status(status):
+# FUNÇÃO AUXILIAR PARA RETORNAR A CLASSE CSS DO STATUS CENTRALIZADO
+def obtener_classe_status(status):
     status_upper = str(status).strip().upper()
     if "ATIVO" in status_upper or "FÉRIAS" in status_upper or "FERIAS" in status_upper:
         return 'class="status-verde"'
@@ -354,11 +357,11 @@ try:
                 for _, row in df_filtrado.iterrows():
                     html_tabela += "<tr>"
                     
-                    # Aplica a classe condicional especificamente na primeira coluna (Status / Situação)
+                    # Primeira célula (Status) com cor condicional e texto centralizado pelo CSS
                     classe_status = obter_classe_status(row['Situação'])
                     html_tabela += f"<td {classe_status}>{row['Situação']}</td>"
                     
-                    # Renderiza o restante das colunas normalmente
+                    # Demais colunas alinhadas normalmente em linha única
                     for col_nome in row.index[1:]:
                         html_tabela += f"<td>{row[col_nome]}</td>"
                         
