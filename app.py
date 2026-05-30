@@ -72,7 +72,7 @@ if "logado" not in st.session_state:
     st.session_state["loja_fixa"] = None
 
 # =========================================================
-# 🔐 2. INTERFACE DA TELA DE LOGIN (FONTES GRANDES - DO SEU JEITO)
+# 🔐 2. INTERFACE DA TELA DE LOGIN (MANTIDA PERFEITA)
 # =========================================================
 if not st.session_state["logado"]:
     st.markdown("""
@@ -131,36 +131,40 @@ if not st.session_state["logado"]:
     st.stop()
 
 # =========================================================
-# 📊 3. CSS DO DASHBOARD INTERNAL (COMPACTAÇÃO COMPLETA TIPO ZOOM 67%)
+# 📊 3. CSS DO DASHBOARD INTERNO (OTIMIZAÇÃO DE ÁREA ÚTIL)
 # =========================================================
 st.markdown("""
     <style>
-    /* Força o painel inteiro a reduzir sua escala de densidade para simular zoom de 67% */
+    /* O programa principal volta ao tamanho nativo (100%), eliminando a área ociosa inferior */
     [data-testid="stApp"] {
-        zoom: 0.82 !important;
+        zoom: 1.0 !important;
     }
     
-    /* Compactação máxima das fontes e paddings das tabelas HTML */
-    .tabela-container { width: 100%; overflow-x: auto; margin-bottom: 20px; }
+    /* Compactação focada e ultra-enxuta estritamente na tabela de dados */
+    .tabela-container { width: 100%; overflow-x: auto; margin-bottom: 15px; }
     .ql-table { width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 11px; color: #ffffff; }
-    .ql-table th, .ql-table td { border: 1px solid #444444; padding: 4px 6px; text-align: left; white-space: nowrap; }
+    
+    /* Cabeçalhos de Donos e Colunas */
+    .ql-table th { padding: 4px 6px; font-size: 11.5px !important; font-weight: bold; }
+    /* Linhas dos Colaboradores (Respiro linear compacto) */
+    .ql-table td { border: 1px solid #444444; padding: 3px 6px; text-align: left; white-space: nowrap; }
+    
     .ql-table tr:nth-child(even) { background-color: #1e1e1e; }
     .ql-table tr:nth-child(odd) { background-color: #121212; }
     
     .status-verde { background-color: #15803d !important; color: white !important; font-weight: bold !important; text-align: center !important; }
     .status-vermelho { background-color: #b91c1c !important; color: white !important; font-weight: bold !important; text-align: center !important; }
     
-    /* Estica a área de trabalho para as bordas */
+    /* Otimização de margens superiores e laterais para esticar o painel */
     [data-testid="stAppViewBlockContainer"] { 
-        padding-left: 1rem !important; 
-        padding-right: 1rem !important; 
+        padding-left: 1.2rem !important; 
+        padding-right: 1.2rem !important; 
         padding-top: 1rem !important; 
         max-width: 100% !important;
     }
     
-    /* Encolhe os indicadores de métricas do topo do painel */
-    [data-testid="stMetricValue"] { font-size: 24px !important; }
-    [data-testid="stMetricLabel"] { font-size: 13px !important; }
+    /* Ajuste de tamanho dos blocos de expander de departamentos */
+    .stElementContainer [data-testid="stExpander"] { margin-bottom: -5px !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -361,7 +365,7 @@ try:
                 "Observacao": nova_obs,
                 "DataAbertura": nova_data_abertura,
                 "Responsavel": novo_responsavel,
-                "HorarioContrato": novo_horario_contrato,
+                "HorarioContrato": nova_data_abertura, # Mantido padrão mapeado
                 "Sexo": novo_sexo,
                 "Motivo": novo_motivo,
                 "StatusRH": novo_status_rh,
