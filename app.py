@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
+from streamlit_gsheets import GSheetsConnection
 
-# 1. CONFIGURAÇÃO DA PÁGINA (Estilo Dashboard em tela cheia)
+# 1. CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="Molicenter - Quadro de Lotação", layout="wide")
 
 # Estilo global das tabelas em HTML
@@ -36,12 +37,15 @@ st.markdown("""
 st.title("📊 Quadro de Lotação (QL) // Requisição")
 st.markdown("---")
 
-# 2. FUNÇÃO PARA CARREGAR E PREPARAR OS DADOS DO EXCEL
-@st.cache_data
-def carregar_dados():
-    df = pd.read_excel("Banco QL.xlsx", sheet_name="Banco")
+# 2. CONEXÃO DIRETA COM O GOOGLE SHEETS
+# (O Streamlit busca as credenciais em .streamlit/secrets.toml)
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+def carregar_dados_sheets():
+    # Carrega a aba "Banco" da sua planilha configurada
+    df = conn.read(worksheet="Banco", ttl="0d")
     
-    # TRATAMENTO DO HORÁRIO DO SISTEMA (Coluna L)
+    # Tratamento do Horário do Sistema
     nome_coluna_horario = 'Descrição (Escala)'
     if nome_coluna_horario in df.columns:
         df['Horario_Sistema_Real'] = df[nome_coluna_horario].astype(str).str.replace('.0', '', regex=False).str.strip()
@@ -49,23 +53,23 @@ def carregar_dados():
     else:
         df['Horario_Sistema_Real'] = "-"
         
-    # FORÇANDO TODAS AS 9 COLUNAS DE DIGITAÇÃO A FICAREM ZERADAS/LIMPAS
-    colunas_novas = [
-        'Observação', 
-        'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo', 
-        'Status RH', 'Candidato', 'Data Admissão'
+    # Garante que as colunas de digitação existam e estejam limpas se nulas
+    colunas_digitacao = [
+        'Observação', 'Data Abertura', 'Responsável', 'Horário Contrato', 
+        'Sexo', 'Motivo', 'Status RH', 'Candidato', 'Data Admissão'
     ]
-    
-    # Aqui garantimos que elas nasçam zeradas para digitação, ignorando qualquer herança do Excel original
-    for col in colunas_novas:
-        df[col] = "-"
+    for col in colunas_digitacao:
+        if col not in df.columns:
+            df[col] = "-"
+        else:
+            df[col] = df[col].fillna("-").astype(str).str.replace('.0', '', regex=False)
             
     return df
 
 try:
-    df_bruto = carregar_dados()
+    df_bruto = carregar_dados_sheets()
 
-    # 3. FILTRO DE LOJA
+    # 3. FILTRO DE LOJA (NA TELA PRINCIPAL)
     lojas_disponiveis = sorted(df_bruto['Loja'].dropna().unique())
     loja_selecionada = st.selectbox(
         "Selecione a Loja para Análise:", 
@@ -75,11 +79,73 @@ try:
 
     df_loja = df_bruto[df_bruto['Loja'] == loja_selecionada].copy()
 
+    # =========================================================
+    # 🛠️ BARRA LATERAL (SIDEBAR) - FORMULÁRIO DE DIGITAÇÃO
+    # =========================================================
+    st.sidebar.header("📝 Alimentar Informações")
+    
+    # Selecionar o funcionário da loja atual para editar
+    funcionarios_loja = sorted(df_loja['Nome'].dropna().unique())
+    colaborador_selecionado = st.sidebar.selectbox("Selecione o Colaborador:", funcionarios_loja)
+    
+    if colaborador_selecionado:
+        # Puxa os dados atuais do funcionário selecionado para mostrar nos campos
+        dados_func = df_loja[df_loja['Nome'] == colaborador_selecionado].iloc[0]
+        
+        st.sidebar.markdown("---")
+        
+        # Campos do Supervisor
+        st.sidebar.subheader("🔸 Supervisor")
+        nova_obs = st.sidebar.text_area("Observação:", value=str(dados_func['Observação']) if str(dados_func['Observação']) != "-" else "")
+        
+        # Campos do Gerente
+        st.sidebar.subheader("🔹 Gerente")
+        nova_data_abertura = st.sidebar.text_input("Data Abertura:", value=str(dados_func['Data Abertura']) if str(dados_func['Data Abertura']) != "-" else "")
+        novo_responsavel = st.sidebar.text_input("Responsável:", value=str(dados_func['Responsável']) if str(dados_func['Responsável']) != "-" else "")
+        novo_horario_contrato = st.sidebar.text_input("Horário Contrato:", value=str(dados_func['Horário Contrato']) if str(dados_func['Horário Contrato']) != "-" else "")
+        novo_sexo = st.sidebar.selectbox("Sexo:", ["-", "M", "F"], index=["-", "M", "F"].index(str(dados_func['Sexo'])) if str(dados_func['Sexo']) in ["-", "M", "F"] else 0)
+        novo_motivo = st.sidebar.text_input("Motivo:", value=str(dados_func['Motivo']) if str(dados_func['Motivo']) != "-" else "")
+        
+        # Campos do RH
+        st.sidebar.subheader("🔺 Recursos Humanos (RH)")
+        novo_status_rh = st.sidebar.text_input("Status RH:", value=str(dados_func['Status RH']) if str(dados_func['Status RH']) != "-" else "")
+        novo_candidato = st.sidebar.text_input("Candidato:", value=str(dados_func['Candidato']) if str(dados_func['Candidato']) != "-" else "")
+        nova_data_admissao = st.sidebar.text_input("Data Admissão:", value=str(dados_func['Data Admissão']) if str(dados_func['Data Admissão']) != "-" else "")
+        
+        # Botão para Salvar as alterações de volta no Google Sheets
+        if st.sidebar.button("💾 Salvar Alterações", use_container_width=True):
+            # Localiza a linha exata no DataFrame bruto pelo nome do funcionário
+            idx = df_bruto[df_bruto['Nome'] == colaborador_selecionado].index[0]
+            
+            # Atualiza os valores com o que foi digitado
+            df_bruto.at[idx, 'Observação'] = nova_obs if nova_obs.strip() != "" else "-"
+            df_bruto.at[idx, 'Data Abertura'] = nova_data_abertura if nova_data_abertura.strip() != "" else "-"
+            df_bruto.at[idx, 'Responsável'] = novo_responsavel if novo_responsavel.strip() != "" else "-"
+            df_bruto.at[idx, 'Horário Contrato'] = novo_horario_contrato if novo_horario_contrato.strip() != "" else "-"
+            df_bruto.at[idx, 'Sexo'] = novo_sexo
+            df_bruto.at[idx, 'Motivo'] = novo_motivo if novo_motivo.strip() != "" else "-"
+            df_bruto.at[idx, 'Status RH'] = novo_status_rh if novo_status_rh.strip() != "" else "-"
+            df_bruto.at[idx, 'Candidato'] = novo_candidato if novo_candidato.strip() != "" else "-"
+            df_bruto.at[idx, 'Data Admissão'] = nova_data_admissao if nova_data_admissao.strip() != "" else "-"
+            
+            # Remove a coluna calculada temporária antes de enviar pro Sheets
+            if 'Horario_Sistema_Real' in df_bruto.columns:
+                df_bruto = df_bruto.drop(columns=['Horario_Sistema_Real'])
+                
+            # Grava o DataFrame atualizado de volta no Google Sheets
+            conn.update(worksheet="Banco", data=df_bruto)
+            st.sidebar.success("Dados salvos com sucesso no Google Sheets!")
+            
+            # Limpa o cache para recarregar a tela principal atualizada
+            st.cache_data.clear()
+            st.rerun()
+
+    # =========================================================
+    # 🏪 INDICADORES E PAINEL VISUAL (TELA PRINCIPAL)
+    # =========================================================
     st.markdown(f"### 🏪 Quadro de Funcionários - Loja {int(loja_selecionada):02d}")
 
-    # 4. INDICADORES DO TOPO
     df_loja['Situação_Upper'] = df_loja['Situação'].astype(str).str.upper()
-    
     ativos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('ATIVO')])
     demitidos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('DEMITIDO')])
     ferias_afastados = len(df_loja[df_loja['Situação_Upper'].str.contains('FÉRIAS|AFASTAMENTO|AFASTADO')])
@@ -91,9 +157,7 @@ try:
 
     st.markdown("---")
 
-    # 5. QUEBRA EM CLUSTERS (DEPARTAMENTO E FUNÇÃO)
     st.subheader("📋 Distribuição por Setor e Cargo")
-    
     departamentos = sorted(df_loja['Dept'].dropna().unique())
 
     for dept in departamentos:
@@ -105,7 +169,6 @@ try:
                 st.markdown(f"**🔹 Cargo: {funcao}**")
                 df_funcao = df_dept[df_dept['Função'] == funcao]
                 
-                # Monta os dados na tabela HTML
                 df_filtrado = df_funcao[[
                     'Situação', 'Nome', 'Horario_Sistema_Real',
                     'Observação',
@@ -147,4 +210,4 @@ try:
                 st.markdown(html_tabela, unsafe_allow_html=True)
 
 except Exception as e:
-    st.error(f"Erro ao gerar a tabela visual. Detalhes: {e}")
+    st.error(f"Erro na conexão ou na estrutura visual. Detalhes: {e}")
