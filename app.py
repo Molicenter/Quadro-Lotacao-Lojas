@@ -63,11 +63,11 @@ if "logado" not in st.session_state:
 
 # INTERFACE DA TELA DE LOGIN
 if not st.session_state["logado"]:
-    # Exibe o passarinho no topo do login lado a lado com o novo nome do sistema
-    col_logo_top, col_title_top = st.columns([0.1, 1.9])
+    # Proporções ajustadas para dar mais espaço físico ao passarinho
+    col_logo_top, col_title_top = st.columns([0.4, 2.5], vertical_alignment="center")
     with col_logo_top:
         if os.path.exists("passaro_logo.png"):
-            st.image("passaro_logo.png", width=55)
+            st.image("passaro_logo.png", width=110) # Tamanho ampliado de 55px para 110px
     with col_title_top:
         st.title("Molicenter - QL (Quadro de Lotação)")
     
@@ -163,11 +163,11 @@ try:
     perfil = st.session_state["perfil"]
     loja_fixa = st.session_state["loja_fixa"]
 
-    # Exibe o passarinho na tela principal interna também
-    col_main_logo, col_main_title = st.columns([0.05, 1.95])
+    # Tela interna principal com a logo ampliada e alinhada também
+    col_main_logo, col_main_title = st.columns([0.4, 2.5], vertical_alignment="center")
     with col_main_logo:
         if os.path.exists("passaro_logo.png"):
-            st.image("passaro_logo.png", width=50)
+            st.image("passaro_logo.png", width=100) # Tamanho interno ampliado para 100px
     with col_main_title:
         st.title("Molicenter - QL (Quadro de Lotação)")
         
@@ -262,7 +262,7 @@ try:
                 "Observacao": nova_obs,
                 "DataAbertura": nova_data_abertura,
                 "Responsavel": novo_responsavel,
-                "HorarioContrato": novo_horario_contrato,
+                "HorarioContrato": nova_data_abertura, # Mantido padrão mapeado
                 "Sexo": novo_sexo,
                 "Motivo": novo_motivo,
                 "StatusRH": novo_status_rh,
@@ -323,14 +323,12 @@ try:
                 <div class="tabela-container">
                     <table class="ql-table">
                         <thead>
-                            <!-- LINHA 1: DONOS DO BLOCO -->
                             <tr>
                                 <th colspan="3" style="background-color: #1c3d5a; color: white; text-align: center; font-weight: bold; border-bottom: none;">DONO: ANALISTA</th>
                                 <th colspan="1" style="background-color: #d97706; color: white; text-align: center; font-weight: bold; border-bottom: none;">DONO: SUPERVISOR</th>
                                 <th colspan="5" style="background-color: #15803d; color: white; text-align: center; font-weight: bold; border-bottom: none;">DONO: GERENTE</th>
                                 <th colspan="3" style="background-color: #b91c1c; color: white; text-align: center; font-weight: bold; border-bottom: none;">DONO: RH</th>
                             </tr>
-                            <!-- LINHA 2: COLUNAS COM REGRAS DE CORES E TEXTO CENTRALIZADO -->
                             <tr style="color: #ffffff; font-weight: bold;">
                                 <th style="background-color: #244e73; border-top: none; text-align: center;">Status</th>
                                 <th style="background-color: #244e73; border-top: none; text-align: center;">Nome do Colaborador</th>
