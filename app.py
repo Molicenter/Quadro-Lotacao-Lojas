@@ -167,7 +167,7 @@ if st.sidebar.button("🚪 Sair do Sistema"):
     st.rerun()
 
 # =========================================================
-# 📊 4. CARGA DE DADOS HÍBRIDA (CORRIGIDA)
+# 📊 4. CARGA DE DADOS HÍBRIDA
 # =========================================================
 @st.cache_data(ttl="0d")
 def carregar_dados_completos():
@@ -191,7 +191,6 @@ def carregar_dados_completos():
             dados_sheets = response.json()
             mapeados = set()
 
-            # Passo A: Mapeia dados digitados para quem JÁ EXISTE no Excel fixo
             for registro in dados_sheets:
                 nome_func = registro.get('Nome')
                 try:
@@ -206,7 +205,6 @@ def carregar_dados_completos():
                     sigla_sexo = str(registro.get('Sexo', '-')).strip()
                     sexo_exibicao = MAPA_SIGLA_SEXO.get(sigla_sexo, sigla_sexo)
                     
-                    # Atualiza a situação se ela tiver sido guardada no Sheets (caso mude)
                     if 'Situação' in registro and str(registro.get('Situação')).strip() not in ["", "-"]:
                         df.at[idx, 'Situação'] = registro.get('Situação')
 
@@ -221,7 +219,6 @@ def carregar_dados_completos():
                     df.at[idx, 'Data Admissão'] = formatar_data_br(registro.get('Data Admissão', '-'))
                     mapeados.add((nome_func, loja_reg))
 
-            # Passo B (AJUSTADO): Puxa quem foi digitado MANUALMENTE para os seus respectivos setores/cargos reais
             linhas_novas_manuais = []
             for registro in dados_sheets:
                 nome_func = registro.get('Nome')
@@ -234,7 +231,6 @@ def carregar_dados_completos():
                     sigla_sexo = str(registro.get('Sexo', '-')).strip()
                     sexo_exibicao = MAPA_SIGLA_SEXO.get(sigla_sexo, sigla_sexo)
                     
-                    # Se tiver Dept no Sheets, usa ele! Senão joga em Ex-Colaboradores por segurança
                     dept_final = registro.get('Dept') if registro.get('Dept') else 'HISTÓRICO / EX-COLABORADORES'
                     funcao_final = registro.get('Funco') if registro.get('Funco') else (registro.get('Função') if registro.get('Função') else 'Sem Vínculo Atual')
                     situacao_final = registro.get('Situaçao') if registro.get('Situaçao') else (registro.get('Situação') if registro.get('Situação') else 'Demitido')
@@ -319,7 +315,6 @@ try:
         st.sidebar.markdown("---")
         colaborador_final = st.sidebar.text_input("Nome Completo do Colaborador:").strip().upper()
         
-        # Coleta os departamentos e funções existentes baseados na planilha oficial
         depts_existentes = sorted(list(df_bruto['Dept'].dropna().unique()))
         if 'HISTÓRICO / EX-COLABORADORES' in depts_existentes:
             depts_existentes.remove('HISTÓRICO / EX-COLABORADORES')
@@ -458,23 +453,46 @@ try:
     st.markdown("---")
 
     st.subheader("📋 Distribuição por Setor e Cargo")
+    
+    # Localizador Visual
+    st.markdown("🔍 **Localizador Rápido**")
+    focar_colaborador = st.checkbox(f"Focar visualização apenas no colaborador: {colaborador_final}" if colaborador_final else "Focar colaborador selecionado", value=False)
+    
     departamentos = sorted(df_loja['Dept'].dropna().unique())
 
     for dept in departamentos:
-        with st.expander(f"🏢 DEPARTAMENTO: {dept}", expanded=True):
-            df_dept = df_loja[df_loja['Dept'] == dept]
+        df_dept = df_loja[df_loja['Dept'] == dept]
+        
+        if focar_colaborador and colaborador_final:
+            if colaborador_final not in df_dept['Nome'].values:
+                continue
+        
+        expander_aberto = True if focar_colaborador else False
+        
+        with st.expander(f"🏢 DEPARTAMENTO: {dept}", expanded=expander_aberto):
             funcoes = sorted(df_dept['Função'].dropna().unique())
             
             for funcao in funcoes:
-                st.markdown(f"**🔹 Cargo: {funcao}**")
                 df_funcao = df_dept[df_dept['Função'] == funcao]
                 
-                df_filtrado = df_funcao[[
-                    'Situação', 'Nome', 'Horario_Sistema_Real',
-                    'Observação',
-                    'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo',
-                    'Status RH', 'Candidato', 'Data Admissão'
-                ]]
+                if focar_colaborador and colaborador_final:
+                    if colaborador_final not in df_funcao['Nome'].values:
+                        continue
+                
+                st.markdown(f"**🔹 Cargo: {funcao}**")
+                
+                if focar_colaborador and colaborador_final:
+                    df_filtrado = df_funcao[df_funcao['Nome'] == colaborador_final][[
+                        'Situação', 'Nome', 'Horario_Sistema_Real', 'Observação',
+                        'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo',
+                        'Status RH', 'Candidato', 'Data Admissão'
+                    ]]
+                else:
+                    df_filtrado = df_funcao[[
+                        'Situação', 'Nome', 'Horario_Sistema_Real', 'Observação',
+                        'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo',
+                        'Status RH', 'Candidato', 'Data Admissão'
+                    ]]
                 
                 html_tabela = f"""
                 <div class="tabela-container">
