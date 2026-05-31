@@ -184,6 +184,9 @@ def carregar_dados_completos():
     colunas_digitacao = ['Observação', 'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo', 'Status RH', 'Candidato', 'Data Admissão']
     for col in colunas_digitacao:
         df[col] = "-"
+        
+    # Coluna de controle interna para identificar quem tem alteração real no Sheets
+    df['Possui_Alteracao_Sheets'] = False
 
     try:
         response = requests.get(URL_API_SHEETS, timeout=10)
@@ -217,6 +220,9 @@ def carregar_dados_completos():
                     df.at[idx, 'Status RH'] = registro.get('Status RH', '-')
                     df.at[idx, 'Candidato'] = registro.get('Candidato', '-')
                     df.at[idx, 'Data Admissão'] = formatar_data_br(registro.get('Data Admissão', '-'))
+                    
+                    # Marca como modificado
+                    df.at[idx, 'Possui_Alteracao_Sheets'] = True
                     mapeados.add((nome_func, loja_reg))
 
             linhas_novas_manuais = []
@@ -250,7 +256,8 @@ def carregar_dados_completos():
                         'Motivo': registro.get('Motivo', '-'),
                         'Status RH': registro.get('Status RH', '-'),
                         'Candidato': registro.get('Candidato', '-'),
-                        'Data Admissão': formatar_data_br(registro.get('Data Admissão', '-'))
+                        'Data Admissão': formatar_data_br(registro.get('Data Admissão', '-')),
+                        'Possui_Alteracao_Sheets': True # Novos inseridos sempre têm alteração
                     }
                     linhas_novas_manuais.append(linha_manual)
             
@@ -285,7 +292,9 @@ try:
         st.info(f"🏪 Modo de Visualização Restrito: **Loja {loja_selecionada:02d}**")
     else:
         lojas_disponiveis = sorted([int(l) for l in df_bruto['Loja'].unique() if int(l) > 0])
+        st.markdown("<div style='max-width: 300px;'>", unsafe_allow_html=True)
         loja_selecionada = st.selectbox("Selecione a Loja para Análise:", lojas_disponiveis, format_func=lambda x: f"Loja {int(x):02d}")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     df_loja = df_bruto[df_bruto['Loja'] == loja_selecionada].copy()
 
@@ -438,7 +447,14 @@ try:
     # =========================================================
     # 🏪 5. INDICADORES E MATRIZ VISUAL CENTRAL
     # =========================================================
-    st.markdown(f"### 🏪 Quadro de Funcionários - Loja {int(loja_selecionada):02d}")
+    
+    # 👇 NOVO FILTRO DE AUDITORIA GLOBAL DE ALTERAÇÕES 👇
+    col_titulo, col_filtro_sheets = st.columns([1.5, 1], vertical_alignment="center")
+    with col_titulo:
+        st.markdown(f"### 🏪 Quadro de Funcionários - Loja {int(loja_selecionada):02d}")
+    with col_filtro_sheets:
+        # Botão/Checkbox dinâmico para isolar os casos modificados/inseridos no Sheets
+        apenas_alterados = st.checkbox("📋 Visualizar apenas registros alterados/inseridos (Geral)", value=False)
 
     df_loja['Situação_Upper'] = df_loja['Situação'].astype(str).str.upper()
     ativos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('ATIVO')])
@@ -454,20 +470,31 @@ try:
 
     st.subheader("📋 Distribuição por Setor e Cargo")
     
-    # Localizador Visual
+    # Localizador Visual Unitário
     st.markdown("🔍 **Localizador Rápido**")
     focar_colaborador = st.checkbox(f"Focar visualização apenas no colaborador: {colaborador_final}" if colaborador_final else "Focar colaborador selecionado", value=False)
     
-    departamentos = sorted(df_loja['Dept'].dropna().unique())
+    # Aplica o filtro de alteração na base inteira se o checkbox estiver ativo
+    if apenas_alterados:
+        df_exibicao = df_loja[df_loja['Possui_Alteracao_Sheets'] == True]
+        st.info("💡 Exibindo estritamente colaboradores com digitação salva no Google Sheets.")
+    else:
+        df_exibicao = df_loja.copy()
+
+    departamentos = sorted(df_exibicao['Dept'].dropna().unique())
+
+    if not departamentos:
+        st.warning("Nenhum registro encontrado com dados preenchidos nesta loja.")
 
     for dept in departamentos:
-        df_dept = df_loja[df_loja['Dept'] == dept]
+        df_dept = df_exibicao[df_exibicao['Dept'] == dept]
         
         if focar_colaborador and colaborador_final:
             if colaborador_final not in df_dept['Nome'].values:
                 continue
         
-        expander_aberto = True if focar_colaborador else False
+        # Se estiver filtrando apenas os alterados ou localizando, expande automaticamente
+        expander_aberto = True if (focar_colaborador or apenas_alterados) else False
         
         with st.expander(f"🏢 DEPARTAMENTO: {dept}", expanded=expander_aberto):
             funcoes = sorted(df_dept['Função'].dropna().unique())
