@@ -526,7 +526,8 @@ try:
             if colaborador_final not in df_dept['Nome'].values:
                 continue
         
-        expander_aberto = True 
+        # 🌟 LINHA ALTERADA: Agora os expanders iniciam recolhidos (False)
+        expander_aberto = False 
         
         with st.expander(f"🏢 DEPARTAMENTO: {dept}", expanded=expander_aberto):
             funcoes = sorted(df_dept['Função'].dropna().unique())
