@@ -50,6 +50,7 @@ USUARIOS_DB = {
     "gerente6@molicenter.com.br": {"senha": "moli1234", "perfil": "gerente", "loja_fixa": 6},
     "gerente7@molicenter.com.br": {"senha": "moli1234", "perfil": "gerente", "loja_fixa": 7},
     "gerente8@molicenter.com.br": {"senha": "moli1234", "perfil": "gerente", "loja_fixa": 8},
+    "gerente30@molicenter.com.br": {"senha": "moli1234", "perfil": "gerente", "loja_fixa": 30},
 }
 
 OPCOES_SEXO = ["-", "Indiferente", "Masculino", "Feminino"]
