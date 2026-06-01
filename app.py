@@ -57,7 +57,6 @@ OPCOES_SEXO = ["-", "Indiferente", "Masculino", "Feminino"]
 MAPA_SEXO_SIGLA = {"-": "-", "Indiferente": "I", "Masculino": "M", "Feminino": "F"}
 MAPA_SIGLA_SEXO = {"-": "-", "I": "Indiferente", "M": "Masculino", "F": "Feminino"}
 
-# Mantido o padrão atualizado manualmente por você 🌟
 OPCOES_MOTIVO = ["-", "Afastamento","Aumento QL", "Encerramento Contrato Exp.","Função Nova", "Mudança Setor", "Substituição", "Transferência"]
 
 OPCOES_STATUS_RH = [
@@ -65,6 +64,30 @@ OPCOES_STATUS_RH = [
     "Divulgação da vaga", "Documentação Admissão", "Entrevista Loja", "Entrevista RH", 
     "Exame Admissional", "Não Validado pelo gerente", "Previsão de Início", 
     "Triagem de Curriculuns", "Validado pelo gerente", "Desistencia Candidato"
+]
+
+# 🌟 NOVA LISTA: Opções predefinidas para o Horário de Contrato
+OPCOES_HORARIO = [
+    "-", "ART 62 CLT", "SG-SB 05:00-10:00 11:15-13:35", "SG-SB 05:50-11:30 13:20-15:00", 
+    "SG-SB 06:00-10:00 11:10-14:30", "SG-SB 06:00-10:00 12:00-15:20", "SG-SB 06:00-11:00 12:15-14:35", 
+    "SG-SB 06:30-10:30 11:40-15:00", "SG-SB 06:30-11:00 13:00-15:50", "SG-SB 06:30-12:00 13:10-15:00", 
+    "SG-SB 07:00-11:00 13:00-16:20", "SG-SB 07:00-11:30 13:00-15:50", "SG-SB 07:00-11:30 13:30-16:20", 
+    "SG-SB 07:00-12:00 13:20-15:40", "SG-SB 07:00-12:00 14:00-16:20", "SG-SB 07:30-11:00 13:00-16:50", 
+    "SG-SB 07:30-11:30 13:30-16:50", "SG-SB 07:30-12:00 13:30-16:20", "SG-SB 07:30-12:00 14:00-16:50", 
+    "SG-SB 07:30-12:30 14:00-16:20", "SG-SB 07:30-13:00 15:00-16:50", "SG-SB 07:50-11:30 13:30-17:10", 
+    "SG-SB 07:50-12:00 14:00-17:10", "SG-SB 08:00-11:30 13:30-17:20", "SG-SB 08:00-12:00 14:00-17:20", 
+    "SG-SB 08:30-11:00 13:00-17:50", "SG-SB 08:30-12:00 14:00-17:50", "SG-SB 09:00-13:00 15:00-18:20", 
+    "SG-SB 09:00-14:00 16:00-18:20", "SG-SB 09:30-13:00 15:00-18:50", "SG-SB 09:50-13:00 14:50-19:00", 
+    "SG-SB 10:00-12:30 14:30-19:20", "SG-SB 10:00-13:00 15:00-19:20", "SG-SB 10:00-14:00 16:00-19:20", 
+    "SG-SB 11:00-14:00 16:00-20:20", "SG-SB 11:00-14:30 16:00-19:50", "SG-SB 11:00-15:00 17:00-20:20", 
+    "SG-SB 11:20-14:00 16:00-20:40", "SG-SB 11:30-13:30 15:30-20:50", "SG-SB 11:30-14:00 16:00-20:50", 
+    "SG-SB 11:30-14:30 16:30-20:50", "SG-SB 11:30-15:30 17:30-20:50", "SG-SB 12:00-15:00 17:00-21:20", 
+    "SG-SB 13:00-16:00 17:10-21:30", "SG-SB 13:00-17:00 18:10-21:30", "SG-SB 13:10-15:00 16:50-22:20", 
+    "SG-SX 07:00-12:00 13:12-17:00", "SG-SX 07:30-12:00 13:12-17:30", "SG-SX 07:30-12:00 13:42-18:00", 
+    "SG-SX 07:30-12:00 14:00-18:18", "SG-SX 08:00-12:00 13:12-18:00", "SG-SX 08:00-13:00 14:12-18:00", 
+    "SG-SX 08:00-17:30 Sab 08:00-12", "SG-SX 5:00-15:00 SB 5:00-09:00", "SG-SX 7:00-17:00 SB 7:00-11:00", 
+    "SG-SX 7:30-16:40 SB 7:30-11:30", "SG-SX 7:30-17:00 SB 08:00-12:0", "SG-SX 7:30-17:00 SB 7:30-11:30", 
+    "SG-SX 7:30-17:30 SB 7:30-11:30", "SG-SX 8:00-18:00 SB 8:00-12:00", "SG-SX 8:30-18:00 SB 9:00-13:00"
 ]
 
 if "logado" not in st.session_state:
@@ -320,7 +343,7 @@ try:
     perfil = st.session_state["perfil"]
     loja_fixa = st.session_state["loja_fixa"]
 
-    # 🌟 CABEÇALHO COMPACTADO
+    # CABEÇALHO COMPACTADO
     col_main_logo, col_main_title = st.columns([0.15, 2.85], vertical_alignment="center")
     with col_main_logo:
         if os.path.exists("passaro_logo.png"):
@@ -407,8 +430,10 @@ try:
             val_resp_default = str(dados_func['Responsável']) if (dados_func is not None and str(dados_func['Responsável']) != "-") else ""
             novo_responsavel = st.sidebar.text_input("Responsável:", value=val_resp_default)
             
-            val_horario_default = str(dados_func['Horário Contrato']) if (dados_func is not None and str(dados_func['Horário Contrato']) != "-") else ""
-            novo_horario_contrato = st.sidebar.text_input("Horário Contrato:", value=val_horario_default)
+            # 🌟 CHAVE ALTERADA: Agora "Horário Contrato" usa st.sidebar.selectbox com index automático
+            val_horario_default = str(dados_func['Horário Contrato']).strip() if dados_func is not None else "-"
+            idx_horario = OPCOES_HORARIO.index(val_horario_default) if val_horario_default in OPCOES_HORARIO else 0
+            novo_horario_contrato = st.sidebar.selectbox("Horário Contrato:", OPCOES_HORARIO, index=idx_horario)
             
             sexo_exibido_atual = str(dados_func['Sexo']).strip() if dados_func is not None else "-"
             idx_sexo = OPCOES_SEXO.index(sexo_exibido_atual) if sexo_exibido_atual in OPCOES_SEXO else 0
@@ -421,7 +446,10 @@ try:
         else:
             nova_data_abertura = st.sidebar.text_input("Data Abertura:", value=str(dados_func['Data Abertura']) if dados_func is not None else "-", disabled=True)
             novo_responsavel = st.sidebar.text_input("Responsável:", value=str(dados_func['Responsável']) if dados_func is not None else "-", disabled=True)
+            
+            # Campo desabilitado para outros níveis também refletindo o formato texto do valor selecionado
             novo_horario_contrato = st.sidebar.text_input("Horário Contrato:", value=str(dados_func['Horário Contrato']) if dados_func is not None else "-", disabled=True)
+            
             novo_sexo_exibido = st.sidebar.text_input("Sexo:", value=str(dados_func['Sexo']) if dados_func is not None else "-", disabled=True)
             novo_sexo = MAPA_SEXO_SIGLA.get(novo_sexo_exibido, "-")
             novo_motivo = st.sidebar.text_input("Motivo:", value=str(dados_func['Motivo']) if dados_func is not None else "-", disabled=True)
@@ -548,12 +576,9 @@ try:
             if colaborador_final not in df_dept['Nome'].values:
                 continue
         
-        # 🌟 ESTRELA: Calcula dinamicamente o total de funcionários do departamento corrente
         total_funcionarios_dept = len(df_dept)
-        
         expander_aberto = st.session_state["expander_global"]
         
-        # Título alterado para incluir o indicador (Contagem) no final do nome
         with st.expander(f"🏢 DEPARTAMENTO: {dept} ({total_funcionarios_dept})", expanded=expander_aberto):
             funcoes = sorted(df_dept['Função'].dropna().unique())
             
