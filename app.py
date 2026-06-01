@@ -57,7 +57,7 @@ OPCOES_SEXO = ["-", "Indiferente", "Masculino", "Feminino"]
 MAPA_SEXO_SIGLA = {"-": "-", "Indiferente": "I", "Masculino": "M", "Feminino": "F"}
 MAPA_SIGLA_SEXO = {"-": "-", "I": "Indiferente", "M": "Masculino", "F": "Feminino"}
 
-OPCOES_MOTIVO = ["-", "Aumento QL", "Função Nova", "Mudança Setor", "Substituição", "Transferência"]
+OPCOES_MOTIVO = ["-", "Afastamento","Aumento QL", "Encerramento Contrato Exp.","Função Nova", "Mudança Setor", "Substituição", "Transferência"]
 
 OPCOES_STATUS_RH = [
     "-", "Requisição atendida", "Aguardando resposta Candidato", "Cancelado", 
