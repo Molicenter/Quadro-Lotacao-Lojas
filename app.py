@@ -72,6 +72,9 @@ if "logado" not in st.session_state:
     st.session_state["perfil"] = ""
     st.session_state["loja_fixa"] = None
 
+if "expander_global" not in st.session_state:
+    st.session_state["expander_global"] = False
+
 # =========================================================
 # 🔐 2. INTERFACE DA TELA DE LOGIN
 # =========================================================
@@ -140,6 +143,19 @@ st.markdown("""
         zoom: 1.0 !important;
     }
     
+    /* 🌟 Redução radical do espaço em branco no topo do cabeçalho */
+    [data-testid="stAppViewBlockContainer"] { 
+        padding-left: 1.2rem !important; 
+        padding-right: 1.2rem !important; 
+        padding-top: 0.5rem !important; 
+        max-width: 100% !important;
+    }
+    
+    /* Remove padding default do bloco principal do Streamlit */
+    [data-testid="stVerticalBlock"] {
+        gap: 0.5rem !important;
+    }
+    
     .tabela-container { width: 100%; overflow-x: auto; margin-bottom: 15px; }
     .ql-table { width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 11px; color: #ffffff; }
     
@@ -151,13 +167,6 @@ st.markdown("""
     
     .status-verde { background-color: #15803d !important; color: white !important; font-weight: bold !important; text-align: center !important; }
     .status-vermelho { background-color: #b91c1c !important; color: white !important; font-weight: bold !important; text-align: center !important; }
-    
-    [data-testid="stAppViewBlockContainer"] { 
-        padding-left: 1.2rem !important; 
-        padding-right: 1.2rem !important; 
-        padding-top: 1rem !important; 
-        max-width: 100% !important;
-    }
     
     div[data-testid="stExpander"] {
         margin-bottom: 6px !important;
@@ -255,7 +264,6 @@ def carregar_dados_completos():
                     mapeados.add((nome_func, loja_reg))
 
             # Passo B (CONDIÇÃO NOVA 🌟): Quem foi inserido manualmente pelo Sheets
-            # Só sobe para a tabela se NÃO tiver uma "Data Admissão" preenchida!
             linhas_novas_manuais = []
             for registro in dados_sheets:
                 nome_func = registro.get('Nome')
@@ -265,10 +273,7 @@ def carregar_dados_completos():
                     loja_reg = 0
                 
                 if (nome_func, loja_reg) not in mapeados:
-                    # Formata a data de admissão vinda do sheets para verificar
                     data_ad_checar = formatar_data_br(registro.get('Data Admissão', '-'))
-                    
-                    # Se tiver qualquer data válida preenchida (diferente de "-"), ESSE REGISTRO MANUAL SOME 🌟
                     if data_ad_checar != "-":
                         continue
                         
@@ -314,16 +319,17 @@ try:
     perfil = st.session_state["perfil"]
     loja_fixa = st.session_state["loja_fixa"]
 
-    col_main_logo, col_main_title = st.columns([0.4, 2.5], vertical_alignment="center")
+    # 🌟 CABEÇALHO COMPACTADO: Ajuste na largura de colunas e espaçamentos internos
+    col_main_logo, col_main_title = st.columns([0.15, 2.85], vertical_alignment="center")
     with col_main_logo:
         if os.path.exists("passaro_logo.png"):
-            st.image("passaro_logo.png", width=100)
+            st.image("passaro_logo.png", width=65) # Diminuído um pouco para compactar
     with col_main_title:
-        st.title("Molicenter - QL (Quadro de Lotação)")
+        st.markdown("<h2 style='margin: 0; padding: 0;'>Molicenter - QL (Quadro de Lotação)</h2>", unsafe_allow_html=True)
         
     st.sidebar.markdown(f"**Usuário:** `{st.session_state['usuario']}`")
     st.sidebar.markdown(f"**Nível:** `{perfil.upper()}`")
-    st.markdown("---")
+    st.markdown("<hr style='margin-top: 2px; margin-bottom: 8px;'>", unsafe_allow_html=True)
 
     if loja_fixa is not None:
         loja_selecionada = loja_fixa
@@ -504,11 +510,26 @@ try:
 
     st.markdown("---")
 
+    # 🌟 SEÇÃO DE BOTÕES MESTRES E LOCALIZADOR RÁPIDO
     st.subheader("📋 Distribuição por Setor e Cargo")
     
-    st.markdown("🔍 **Localizador Rápido**")
-    focar_colaborador = st.checkbox(f"Focar visualização apenas no colaborador: {colaborador_final}" if colaborador_final else "Focar colaborador selecionado", value=False)
+    col_busca, col_botoes_expander = st.columns([1.5, 1], vertical_alignment="bottom")
     
+    with col_busca:
+        st.markdown("🔍 **Localizador Rápido**")
+        focar_colaborador = st.checkbox(f"Focar visualização apenas no colaborador: {colaborador_final}" if colaborador_final else "Focar colaborador selecionado", value=False)
+    
+    with col_botoes_expander:
+        # Botão dinâmico para abrir ou fechar tudo baseado no estado atual
+        if st.session_state["expander_global"]:
+            if st.button("📁 Recolher Todos os Departamentos", use_container_width=True):
+                st.session_state["expander_global"] = False
+                st.rerun()
+        else:
+            if st.button("📂 Expandir Todos os Departamentos", use_container_width=True):
+                st.session_state["expander_global"] = True
+                st.rerun()
+
     if apenas_alterados:
         df_exibicao = df_loja[df_loja['Possui_Alteracao_Sheets'] == True]
         st.info("💡 Exibindo estritamente colaboradores com digitação salva no Google Sheets.")
@@ -527,8 +548,8 @@ try:
             if colaborador_final not in df_dept['Nome'].values:
                 continue
         
-        # 🌟 LINHA ALTERADA: Agora os expanders iniciam recolhidos (False)
-        expander_aberto = False 
+        # O estado do expander segue o controle do botão mestre
+        expander_aberto = st.session_state["expander_global"]
         
         with st.expander(f"🏢 DEPARTAMENTO: {dept}", expanded=expander_aberto):
             funcoes = sorted(df_dept['Função'].dropna().unique())
