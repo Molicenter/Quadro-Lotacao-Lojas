@@ -49,8 +49,8 @@ USUARIOS_DB = {
     "analista@molicenter.com.br": {"senha": "moli0123", "perfil": "analista", "loja_fixa": None},
     "dp1@molicenter.com.br": {"senha": "dpmol123", "perfil": "rh", "loja_fixa": None},
     "rh1@molicenter.com.br": {"senha": "0413233031", "perfil": "rh", "loja_fixa": None},
-    "rhloja01@molicenter.com.br": {"senha": "rhmoli123", "perfil": "rh", "loja_fixa": None},
-    "rhloja08@molicenter.com.br": {"senha": "rhmoli123", "perfil": "rh", "loja_fixa": None},
+    "rhloja01@molicenter.com.br": {"senha": "rhmoli123", "perfil": "rh", "loja_fixa": 1},
+    "rhloja08@molicenter.com.br": {"senha": "rhmoli123", "perfil": "rh", "loja_fixa": 8},
     "supervisorlojas@molicenter.com.br": {"senha": "moli1234", "perfil": "supervisor", "loja_fixa": None},
     "gerente1@molicenter.com.br": {"senha": "moli1234", "perfil": "gerente", "loja_fixa": 1},
     "gerente2@molicenter.com.br": {"senha": "moli1234", "perfil": "gerente", "loja_fixa": 2},
@@ -574,11 +574,16 @@ try:
     ativos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('ATIVO')])
     demitidos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('DEMITIDO')])
     ferias_afastados = len(df_loja[df_loja['Situação_Upper'].str.contains('FÉRIAS|AFASTAMENTO|AFASTADO')])
+    
+    # Nova contagem: calcula as alterações baseadas exclusivamente no recorte da visão atual (df_loja)
+    alterados_qtd = len(df_loja[df_loja['Possui_Alteracao_Sheets'] == True])
 
-    col1, col2, col3 = st.columns(3)
+    # Mudança para 4 blocos horizontais de métricas
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Funcionários Ativos", ativos_qtd)
     col2.metric("Demitidos", demitidos_qtd)
     col3.metric("Férias / Afastamentos", ferias_afastados)
+    col4.metric("Registros Alterados", alterados_qtd)
 
     st.markdown("---")
 
@@ -654,9 +659,6 @@ try:
                 # Renderização da Tabela HTML Dinâmica
                 colspan_analista = 4 if modo_visao_global else 3
                 
-                # A CORREÇÃO ESTÁ AQUI: Removemos os espaços em branco no início das linhas do HTML. 
-                # O Streamlit usa Markdown e, no Markdown, qualquer linha que comece com 4 ou mais espaços
-                # é transformada acidentalmente em um "bloco de código" visível.
                 html_tabela = f"""
 <div class="tabela-container">
 <table class="ql-table">
