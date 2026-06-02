@@ -40,7 +40,9 @@ URL_API_SHEETS = "https://script.google.com/macros/s/AKfycbz_OA0O8zS-rMuuZEYu5rU
 # MATRIZ DE PERFIL E USUÁRIOS
 USUARIOS_DB = {
     "analista@molicenter.com.br": {"senha": "moli0123", "perfil": "analista", "loja_fixa": None},
-    "rh1@molicenter.com.br": {"senha": "moli1234", "perfil": "rh", "loja_fixa": None},
+    "rh1@molicenter.com.br": {"senha": "0413233031", "perfil": "rh", "loja_fixa": None},
+    "rhloja01@molicenter.com.br": {"senha": "rhmoli123", "perfil": "rh", "loja_fixa": None},
+    "rhloja08@molicenter.com.br": {"senha": "rhmoli123", "perfil": "rh", "loja_fixa": None},
     "supervisorlojas@molicenter.com.br": {"senha": "moli1234", "perfil": "supervisor", "loja_fixa": None},
     "gerente1@molicenter.com.br": {"senha": "moli1234", "perfil": "gerente", "loja_fixa": 1},
     "gerente2@molicenter.com.br": {"senha": "moli1234", "perfil": "gerente", "loja_fixa": 2},
