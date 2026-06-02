@@ -571,19 +571,21 @@ try:
         apenas_alterados = st.checkbox("📋 Visualizar apenas registros alterados/inseridos (Geral)", value=False)
 
     df_loja['Situação_Upper'] = df_loja['Situação'].astype(str).str.upper()
-    ativos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('ATIVO')])
-    demitidos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('DEMITIDO')])
-    ferias_afastados = len(df_loja[df_loja['Situação_Upper'].str.contains('FÉRIAS|AFASTAMENTO|AFASTADO')])
     
-    # Nova contagem: calcula as alterações baseadas exclusivamente no recorte da visão atual (df_loja)
+    # Contagens separadas
+    ativos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('ATIVO')])
+    ferias_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('FÉRIAS|FERIAS')])
+    demitidos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('DEMITIDO')])
+    afastados_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('AFASTAMENTO|AFASTADO')])
     alterados_qtd = len(df_loja[df_loja['Possui_Alteracao_Sheets'] == True])
 
-    # Mudança para 4 blocos horizontais de métricas
-    col1, col2, col3, col4 = st.columns(4)
+    # Mudança para 5 colunas na ordem solicitada
+    col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Funcionários Ativos", ativos_qtd)
-    col2.metric("Demitidos", demitidos_qtd)
-    col3.metric("Férias / Afastamentos", ferias_afastados)
-    col4.metric("Registros Alterados", alterados_qtd)
+    col2.metric("Férias", ferias_qtd)
+    col3.metric("Demitidos", demitidos_qtd)
+    col4.metric("Afastamentos", afastados_qtd)
+    col5.metric("Registros Alterados", alterados_qtd)
 
     st.markdown("---")
 
