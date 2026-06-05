@@ -21,6 +21,7 @@ st.set_page_config(
     page_title="Molicenter - QL (Quadro de Lotação)", 
     page_icon="passaro_logo.png" if os.path.exists("passaro_logo.png") else "📊",
     layout="wide"
+    initial_sidebar_state="collapsed" 
 )
 
 def obter_classe_status(status):
