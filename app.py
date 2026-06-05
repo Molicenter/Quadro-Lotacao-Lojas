@@ -114,6 +114,9 @@ if "logado" not in st.session_state:
 if "expander_global" not in st.session_state:
     st.session_state["expander_global"] = False
 
+if "chk_alterados" not in st.session_state:
+    st.session_state["chk_alterados"] = False
+
 # =========================================================
 # 🔐 2. INTERFACE DA TELA DE LOGIN
 # =========================================================
@@ -566,10 +569,23 @@ try:
     
     st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
     
-    apenas_alterados = st.checkbox("📝 Visualizar apenas registros alterados/inseridos (Geral)", value=False)
+    # Callback para sincronizar o checkbox de expandir com o de alterados
+    def sync_expandir():
+        if st.session_state["chk_alterados"]:
+            st.session_state["expander_global"] = True
+        else:
+            st.session_state["expander_global"] = False
+            
+    apenas_alterados = st.checkbox(
+        "📝 Visualizar apenas registros alterados/inseridos (Geral)", 
+        key="chk_alterados",
+        on_change=sync_expandir
+    )
     
-    expandir_todos = st.checkbox("📂 Expandir Todos os Departamentos", value=st.session_state.get("expander_global", False))
-    st.session_state["expander_global"] = expandir_todos
+    expandir_todos = st.checkbox(
+        "📂 Expandir Todos os Departamentos", 
+        key="expander_global"
+    )
 
     if st.button("🔄 Atualizar Registros", type="primary"):
         st.cache_data.clear() # Limpa o cache e força nova leitura da API Google Sheets
