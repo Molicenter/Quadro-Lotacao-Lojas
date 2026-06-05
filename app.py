@@ -560,126 +560,19 @@ try:
     """
     st.markdown(html_cards, unsafe_allow_html=True)
 
-    # =========================================================
-    # 📈 RELATÓRIO DE EFETIVIDADE (EXCLUSIVO RH E ANALISTA)
-    # =========================================================
-    if perfil in ["analista", "rh"]:
-        with st.expander("📊 Relatório de Efetividade: Vagas Abertas vs Concluídas", expanded=False):
-            st.markdown("### 📅 Análise de Preenchimento por Período de Abertura")
-            
-            # Filtros de data
-            col_d1, col_d2, _ = st.columns([1, 1, 3])
-            with col_d1:
-                hoje = date.today()
-                inicio_mes = date(hoje.year, hoje.month, 1)
-                data_inicio_filtro = st.date_input("Data Início (Abertura):", value=inicio_mes, format="DD/MM/YYYY")
-            with col_d2:
-                data_fim_filtro = st.date_input("Data Fim (Abertura):", value=hoje, format="DD/MM/YYYY")
-
-            if data_inicio_filtro and data_fim_filtro:
-                # Prepara DataFrame e converte Data Abertura para Datetime (ignorando os hifens)
-                df_analise = df_loja.copy()
-                df_analise['DataAbertura_DT'] = pd.to_datetime(df_analise['Data Abertura'], format='%d/%m/%Y', errors='coerce')
-
-                # Filtrar apenas registros abertos no período selecionado
-                mascara_periodo = (df_analise['DataAbertura_DT'].dt.date >= data_inicio_filtro) & (df_analise['DataAbertura_DT'].dt.date <= data_fim_filtro)
-                df_abertas_periodo = df_analise[mascara_periodo].copy()
-
-                if df_abertas_periodo.empty:
-                    st.info("Nenhuma vaga com Data de Abertura cadastrada neste período para esta(s) loja(s).")
-                else:
-                    # Agrupar Abertas
-                    abertas_por_loja = df_abertas_periodo.groupby('Loja').size().reset_index(name='Abertas')
-
-                    # Calcular Concluídas (possui Data Admissão preenchida e diferente de "-")
-                    df_abertas_periodo['Concluida'] = df_abertas_periodo['Data Admissão'].apply(lambda x: 1 if str(x).strip() not in ['-', '', 'nan', 'None'] else 0)
-                    concluidas_por_loja = df_abertas_periodo.groupby('Loja')['Concluida'].sum().reset_index(name='Concluídas')
-
-                    # Mesclar dados
-                    df_relatorio = pd.merge(abertas_por_loja, concluidas_por_loja, on='Loja', how='outer').fillna(0)
-                    df_relatorio['%'] = (df_relatorio['Concluídas'] / df_relatorio['Abertas'] * 100).fillna(0).round(0).astype(int)
-
-                    # Adicionar Linha de Total
-                    total_abertas = df_relatorio['Abertas'].sum()
-                    total_concluidas = df_relatorio['Concluídas'].sum()
-                    perc_total = int(round((total_concluidas / total_abertas * 100) if total_abertas > 0 else 0, 0))
-
-                    df_exibicao_rel = df_relatorio.copy()
-                    df_exibicao_rel['Loja'] = df_exibicao_rel['Loja'].apply(lambda x: f"Loja {int(x):02d}")
-                    
-                    # Guarda os valores numéricos para o gráfico antes de formatar a tabela
-                    lojas_x = df_exibicao_rel['Loja'].tolist() + ["Total"]
-                    abertas_y = df_exibicao_rel['Abertas'].tolist() + [total_abertas]
-                    concluidas_y = df_exibicao_rel['Concluídas'].tolist() + [total_concluidas]
-                    perc_y = df_exibicao_rel['%'].tolist() + [perc_total]
-
-                    # Formatar % na tabela
-                    df_exibicao_rel['%'] = df_exibicao_rel['%'].astype(str) + "%"
-                    linha_total = pd.DataFrame([{"Loja": "Total", "Abertas": total_abertas, "Concluídas": total_concluidas, "%": f"{perc_total}%"}])
-                    df_exibicao_rel = pd.concat([df_exibicao_rel, linha_total], ignore_index=True)
-
-                    # --- CRIAR GRÁFICO PLOTLY ---
-                    fig = go.Figure()
-
-                    # Barras Cinzas (Abertas)
-                    fig.add_trace(go.Bar(
-                        x=lojas_x, y=abertas_y,
-                        name='Abertas',
-                        marker_color='#888888',
-                        text=abertas_y,
-                        textposition='auto'
-                    ))
-
-                    # Barras Azuis (Concluídas)
-                    fig.add_trace(go.Bar(
-                        x=lojas_x, y=concluidas_y,
-                        name='Concluídas',
-                        marker_color='#1F4E78',
-                        text=concluidas_y,
-                        textposition='auto'
-                    ))
-
-                    # Anotações dos Percentuais no topo
-                    teto_grafico = max(abertas_y) if abertas_y else 1
-                    for i, loja in enumerate(lojas_x):
-                        fig.add_annotation(
-                            x=loja,
-                            y=max(abertas_y[i], concluidas_y[i]) + (teto_grafico * 0.1), # Joga 10% acima da barra
-                            text=f"<b>{perc_y[i]}%</b>",
-                            showarrow=False,
-                            font=dict(color="#38bdf8" if perc_y[i] > 0 else "#64748b", size=14) # Azul claro ou cinza
-                        )
-
-                    # Layout do Gráfico (Fundo Transparente/Dark)
-                    fig.update_layout(
-                        barmode='group',
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        font=dict(color='#e2e8f0'),
-                        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
-                        margin=dict(t=40, b=0, l=0, r=0),
-                        yaxis=dict(showgrid=True, gridcolor='#334155', range=[0, teto_grafico * 1.25]) # Dá margem pro texto
-                    )
-
-                    # --- RENDERIZAR NA TELA LADO A LADO ---
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    col_tab, col_graf = st.columns([1, 2.5])
-                    with col_tab:
-                        st.dataframe(df_exibicao_rel, hide_index=True, use_container_width=True)
-                    with col_graf:
-                        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-
     st.markdown("---")
-
-    st.subheader("📋 Distribuição por Setor e Cargo")
     
-    # === NOVOS CONTROLES (LOCALIZADOR, CHECKBOXES E ATUALIZAR) EMPILHADOS ===
-    st.markdown("🔍 **Localizador Rápido**")
-    focar_colaborador = st.checkbox(f"Focar visualização apenas no colaborador: {colaborador_final}" if colaborador_final else "Focar colaborador selecionado", value=False)
+    # === PAINEL DE CONTROLE E VISUALIZAÇÃO ===
+    st.subheader("📋 Painel de Controle e Visualização")
     
-    st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+    # 1. Relatório de Efetividade (Apenas RH e Analista)
+    mostrar_relatorio = False
+    if perfil in ["analista", "rh"]:
+        mostrar_relatorio = st.checkbox("📊 Visualizar Relatório de Efetividade (Vagas Abertas vs Concluídas)", value=False)
     
-    # Callback para sincronizar o checkbox de expandir com o de alterados
+    # 2. Localizador e Checkboxes
+    focar_colaborador = st.checkbox(f"🔍 Focar visualização apenas no colaborador: {colaborador_final}" if colaborador_final else "🔍 Focar colaborador selecionado", value=False)
+    
     def sync_expandir():
         if st.session_state["chk_alterados"]:
             st.session_state["expander_global"] = True
@@ -698,10 +591,139 @@ try:
     )
 
     if st.button("🔄 Atualizar Registros", type="primary"):
-        st.cache_data.clear() # Limpa o cache e força nova leitura da API Google Sheets
+        st.cache_data.clear() 
         st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
+
+    # =========================================================
+    # 📈 LÓGICA DO RELATÓRIO DE EFETIVIDADE (RENDERIZAÇÃO)
+    # =========================================================
+    if mostrar_relatorio:
+        st.markdown("### 📅 Análise de Preenchimento por Período de Abertura")
+        
+        col_d1, col_d2, _ = st.columns([1, 1, 3])
+        with col_d1:
+            hoje = date.today()
+            inicio_mes = date(hoje.year, hoje.month, 1)
+            data_inicio_filtro = st.date_input("Data Início (Abertura):", value=inicio_mes, format="DD/MM/YYYY")
+        with col_d2:
+            data_fim_filtro = st.date_input("Data Fim (Abertura):", value=hoje, format="DD/MM/YYYY")
+
+        if data_inicio_filtro and data_fim_filtro:
+            df_analise = df_loja.copy()
+            df_analise['DataAbertura_DT'] = pd.to_datetime(df_analise['Data Abertura'], format='%d/%m/%Y', errors='coerce')
+
+            mascara_periodo = (df_analise['DataAbertura_DT'].dt.date >= data_inicio_filtro) & (df_analise['DataAbertura_DT'].dt.date <= data_fim_filtro)
+            df_abertas_periodo = df_analise[mascara_periodo].copy()
+
+            if df_abertas_periodo.empty:
+                st.info("Nenhuma vaga com Data de Abertura cadastrada neste período para esta(s) loja(s).")
+            else:
+                abertas_por_loja = df_abertas_periodo.groupby('Loja').size().reset_index(name='Abertas')
+                df_abertas_periodo['Concluida'] = df_abertas_periodo['Data Admissão'].apply(lambda x: 1 if str(x).strip() not in ['-', '', 'nan', 'None'] else 0)
+                concluidas_por_loja = df_abertas_periodo.groupby('Loja')['Concluida'].sum().reset_index(name='Concluídas')
+
+                df_relatorio = pd.merge(abertas_por_loja, concluidas_por_loja, on='Loja', how='outer').fillna(0)
+                df_relatorio['%'] = (df_relatorio['Concluídas'] / df_relatorio['Abertas'] * 100).fillna(0).round(0).astype(int)
+
+                total_abertas = df_relatorio['Abertas'].sum()
+                total_concluidas = df_relatorio['Concluídas'].sum()
+                perc_total = int(round((total_concluidas / total_abertas * 100) if total_abertas > 0 else 0, 0))
+
+                df_exibicao_rel = df_relatorio.copy()
+                df_exibicao_rel['Loja'] = df_exibicao_rel['Loja'].apply(lambda x: f"Loja {int(x):02d}")
+                
+                lojas_x = df_exibicao_rel['Loja'].tolist() + ["Total"]
+                abertas_y = df_exibicao_rel['Abertas'].tolist() + [total_abertas]
+                concluidas_y = df_exibicao_rel['Concluídas'].tolist() + [total_concluidas]
+                perc_y = df_exibicao_rel['%'].tolist() + [perc_total]
+
+                df_exibicao_rel['%'] = df_exibicao_rel['%'].astype(str) + "%"
+                linha_total = pd.DataFrame([{"Loja": "Total", "Abertas": total_abertas, "Concluídas": total_concluidas, "%": f"{perc_total}%"}])
+                df_exibicao_rel = pd.concat([df_exibicao_rel, linha_total], ignore_index=True)
+
+                # --- Lógica para colorir a tabela ---
+                def formatar_tabela_percentual(col):
+                    estilos = []
+                    for val in col:
+                        try:
+                            num = float(str(val).replace('%', ''))
+                            if num >= 50:
+                                estilos.append('color: #10b981; font-weight: bold; background-color: rgba(16, 185, 129, 0.1);')
+                            else:
+                                estilos.append('color: #ef4444; font-weight: bold; background-color: rgba(239, 68, 68, 0.1);')
+                        except:
+                            estilos.append('')
+                    return estilos
+
+                # --- CRIAR GRÁFICO PLOTLY MODERNIZADO ---
+                fig = go.Figure()
+
+                fig.add_trace(go.Bar(
+                    x=lojas_x, y=abertas_y,
+                    name='Abertas',
+                    marker_color='#64748b',
+                    marker_line_width=0, 
+                    text=abertas_y,
+                    textposition='outside', 
+                    textfont=dict(color='#e2e8f0', size=13)
+                ))
+
+                fig.add_trace(go.Bar(
+                    x=lojas_x, y=concluidas_y,
+                    name='Concluídas',
+                    marker_color='#0ea5e9',
+                    marker_line_width=0,
+                    text=concluidas_y,
+                    textposition='outside',
+                    textfont=dict(color='#e2e8f0', size=13)
+                ))
+
+                teto_grafico = max(abertas_y) if abertas_y else 1
+                for i, loja in enumerate(lojas_x):
+                    fig.add_annotation(
+                        x=loja,
+                        y=max(abertas_y[i], concluidas_y[i]) + (teto_grafico * 0.15), 
+                        text=f"<b>{perc_y[i]}%</b>",
+                        showarrow=False,
+                        font=dict(color="#fbbf24" if perc_y[i] > 0 else "#475569", size=15) 
+                    )
+
+                fig.update_layout(
+                    barmode='group',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#e2e8f0', family="sans-serif"),
+                    legend=dict(
+                        orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5,
+                        font=dict(size=14)
+                    ),
+                    margin=dict(t=50, b=0, l=0, r=0),
+                    yaxis=dict(
+                        showgrid=True, 
+                        gridcolor='rgba(255,255,255,0.05)', 
+                        showticklabels=False, 
+                        zeroline=True,
+                        zerolinecolor='rgba(255,255,255,0.1)',
+                        range=[0, teto_grafico * 1.35] 
+                    ),
+                    xaxis=dict(
+                        showgrid=False,
+                        tickfont=dict(size=13, color='#cbd5e1')
+                    ),
+                    hovermode="x unified" 
+                )
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                col_tab, col_graf = st.columns([1, 2.5])
+                with col_tab:
+                    st.dataframe(df_exibicao_rel.style.apply(formatar_tabela_percentual, subset=['%']), hide_index=True, use_container_width=True)
+                with col_graf:
+                    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+        
+        st.markdown("---") # Divisor antes de carregar a estrutura de departamentos abaixo
+
     # =========================================================================
 
     if apenas_alterados:
