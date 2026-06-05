@@ -564,8 +564,11 @@ try:
     
     # === PAINEL DE CONTROLE E VISUALIZAÇÃO ===
     st.subheader("📋 Painel de Controle e Visualização")
-
-    # 1. Relatório de Efetividade (Apenas RH e Analista)
+    
+    # 1. Focar Colaborador
+    focar_colaborador = st.checkbox(f"🔍 Focar visualização apenas no colaborador: {colaborador_final}" if colaborador_final else "🔍 Focar colaborador selecionado", value=False)
+    
+    # 2. Relatório de Efetividade (Apenas RH e Analista)
     mostrar_relatorio = False
     if perfil in ["analista", "rh"]:
         mostrar_relatorio = st.checkbox("📊 Visualizar Relatório de Efetividade (Vagas Abertas vs Concluídas)", value=False)
@@ -577,10 +580,6 @@ try:
         else:
             st.session_state["expander_global"] = False
             
-    
-    # 2. Focar Colaborador
-    focar_colaborador = st.checkbox(f"🔍 Focar visualização apenas no colaborador: {colaborador_final}" if colaborador_final else "🔍 Focar colaborador selecionado", value=False)
-
     # 3. Apenas Alterados
     apenas_alterados = st.checkbox(
         "📝 Visualizar apenas registros alterados/inseridos (Geral)", 
@@ -633,10 +632,8 @@ try:
                 # Lógica 4: Validação robusta de conclusão
                 def check_concluida(x):
                     val = str(x).strip().lower()
-                    # Se for vazio, traço, nulo ou zero, ignora
                     if val in ['-', '', 'nan', 'none', 'nat', '0', 'null']:
                         return 0
-                    # Se tiver mais de 5 caracteres, é muito provável que seja uma data dd/mm ou yyyy
                     if len(val) >= 5:
                         return 1
                     return 0
@@ -654,39 +651,14 @@ try:
                 df_exibicao_rel = df_relatorio.copy()
                 df_exibicao_rel['Loja'] = df_exibicao_rel['Loja'].apply(lambda x: f"Loja {int(x):02d}")
                 
-                # Convertendo para texto para forçar centralização no st.dataframe e capturar os valores para o gráfico
                 lojas_x = df_exibicao_rel['Loja'].tolist() + ["Total"]
                 abertas_y = df_exibicao_rel['Abertas'].tolist() + [total_abertas]
                 concluidas_y = df_exibicao_rel['Concluídas'].tolist() + [total_concluidas]
                 perc_y = df_exibicao_rel['%'].tolist() + [perc_total]
 
-                df_exibicao_rel['Abertas'] = df_exibicao_rel['Abertas'].astype(str)
-                df_exibicao_rel['Concluídas'] = df_exibicao_rel['Concluídas'].astype(str)
                 df_exibicao_rel['%'] = df_exibicao_rel['%'].astype(str) + "%"
-                linha_total = pd.DataFrame([{"Loja": "Total", "Abertas": str(total_abertas), "Concluídas": str(total_concluidas), "%": f"{perc_total}%"}])
+                linha_total = pd.DataFrame([{"Loja": "Total", "Abertas": total_abertas, "Concluídas": total_concluidas, "%": f"{perc_total}%"}])
                 df_exibicao_rel = pd.concat([df_exibicao_rel, linha_total], ignore_index=True)
-
-                # --- Lógica para colorir e centralizar a tabela ---
-                def formatar_tabela_percentual(col):
-                    estilos = []
-                    base_style = 'text-align: center !important; vertical-align: middle !important; '
-                    for val in col:
-                        try:
-                            num = float(str(val).replace('%', ''))
-                            if num >= 50:
-                                estilos.append(base_style + 'color: #10b981; font-weight: bold; background-color: rgba(16, 185, 129, 0.1);')
-                            else:
-                                estilos.append(base_style + 'color: #ef4444; font-weight: bold; background-color: rgba(239, 68, 68, 0.1);')
-                        except:
-                            estilos.append(base_style)
-                    return estilos
-
-                styler = df_exibicao_rel.style.set_properties(**{'text-align': 'center !important'}) \
-                            .apply(formatar_tabela_percentual, subset=['%']) \
-                            .set_table_styles([
-                                dict(selector='th', props=[('text-align', 'center !important')]),
-                                dict(selector='td', props=[('text-align', 'center !important')])
-                            ])
 
                 # --- CRIAR GRÁFICO PLOTLY MODERNIZADO ---
                 fig = go.Figure()
@@ -746,10 +718,56 @@ try:
                     hovermode="x unified" 
                 )
 
+                # --- TABELA HTML CUSTOMIZADA PARA CENTRALIZAÇÃO PERFEITA ---
+                html_resumo = """
+                <div class="tabela-container">
+                <table class="ql-table" style="width: 100%;">
+                <thead>
+                <tr style="background-color: #1e293b; border-bottom: 2px solid #475569;">
+                <th style="text-align: center !important; padding: 10px;">Loja</th>
+                <th style="text-align: center !important; padding: 10px;">Abertas</th>
+                <th style="text-align: center !important; padding: 10px;">Concluídas</th>
+                <th style="text-align: center !important; padding: 10px;">%</th>
+                </tr>
+                </thead>
+                <tbody>
+                """
+                
+                for _, row in df_exibicao_rel.iterrows():
+                    try:
+                        num = float(str(row['%']).replace('%', ''))
+                    except:
+                        num = 0
+                        
+                    if num >= 50:
+                        estilo_perc = "color: #10b981; font-weight: bold; background-color: rgba(16, 185, 129, 0.1); text-align: center !important;"
+                    else:
+                        estilo_perc = "color: #ef4444; font-weight: bold; background-color: rgba(239, 68, 68, 0.1); text-align: center !important;"
+                        
+                    if str(row['Loja']).strip().upper() == "TOTAL":
+                        estilo_linha = "background-color: #334155; font-weight: bold;"
+                    else:
+                        estilo_linha = ""
+                        
+                    html_resumo += f"""
+                    <tr style="{estilo_linha}">
+                        <td style="text-align: center !important;">{row['Loja']}</td>
+                        <td style="text-align: center !important;">{row['Abertas']}</td>
+                        <td style="text-align: center !important;">{row['Concluídas']}</td>
+                        <td style="{estilo_perc}">{row['%']}</td>
+                    </tr>
+                    """
+                
+                html_resumo += """
+                </tbody>
+                </table>
+                </div>
+                """
+
                 st.markdown("<br>", unsafe_allow_html=True)
                 col_tab, col_graf = st.columns([1, 2.5])
                 with col_tab:
-                    st.dataframe(styler, hide_index=True, use_container_width=True)
+                    st.markdown(html_resumo, unsafe_allow_html=True)
                 with col_graf:
                     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
         
