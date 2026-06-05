@@ -565,26 +565,29 @@ try:
     # === PAINEL DE CONTROLE E VISUALIZAÇÃO ===
     st.subheader("📋 Painel de Controle e Visualização")
     
-    # 1. Relatório de Efetividade (Apenas RH e Analista) agora é a PRIMEIRA opção
+    # 1. Focar Colaborador
+    focar_colaborador = st.checkbox(f"🔍 Focar visualização apenas no colaborador: {colaborador_final}" if colaborador_final else "🔍 Focar colaborador selecionado", value=False)
+    
+    # 2. Relatório de Efetividade (Apenas RH e Analista)
     mostrar_relatorio = False
     if perfil in ["analista", "rh"]:
         mostrar_relatorio = st.checkbox("📊 Visualizar Relatório de Efetividade (Vagas Abertas vs Concluídas)", value=False)
     
-    # 2. Localizador e Checkboxes seguintes
-    focar_colaborador = st.checkbox(f"🔍 Focar visualização apenas no colaborador: {colaborador_final}" if colaborador_final else "🔍 Focar colaborador selecionado", value=False)
-    
+    # Callback para sincronizar o checkbox de expandir com o de alterados
     def sync_expandir():
         if st.session_state["chk_alterados"]:
             st.session_state["expander_global"] = True
         else:
             st.session_state["expander_global"] = False
             
+    # 3. Apenas Alterados
     apenas_alterados = st.checkbox(
         "📝 Visualizar apenas registros alterados/inseridos (Geral)", 
         key="chk_alterados",
         on_change=sync_expandir
     )
     
+    # 4. Expandir Todos
     expandir_todos = st.checkbox(
         "📂 Expandir Todos os Departamentos", 
         key="expander_global"
@@ -650,20 +653,22 @@ try:
                 df_exibicao_rel = df_relatorio.copy()
                 df_exibicao_rel['Loja'] = df_exibicao_rel['Loja'].apply(lambda x: f"Loja {int(x):02d}")
                 
+                # Convertendo para texto para forçar centralização no st.dataframe e capturar os valores para o gráfico
                 lojas_x = df_exibicao_rel['Loja'].tolist() + ["Total"]
                 abertas_y = df_exibicao_rel['Abertas'].tolist() + [total_abertas]
                 concluidas_y = df_exibicao_rel['Concluídas'].tolist() + [total_concluidas]
                 perc_y = df_exibicao_rel['%'].tolist() + [perc_total]
 
+                df_exibicao_rel['Abertas'] = df_exibicao_rel['Abertas'].astype(str)
+                df_exibicao_rel['Concluídas'] = df_exibicao_rel['Concluídas'].astype(str)
                 df_exibicao_rel['%'] = df_exibicao_rel['%'].astype(str) + "%"
-                linha_total = pd.DataFrame([{"Loja": "Total", "Abertas": total_abertas, "Concluídas": total_concluidas, "%": f"{perc_total}%"}])
+                linha_total = pd.DataFrame([{"Loja": "Total", "Abertas": str(total_abertas), "Concluídas": str(total_concluidas), "%": f"{perc_total}%"}])
                 df_exibicao_rel = pd.concat([df_exibicao_rel, linha_total], ignore_index=True)
 
                 # --- Lógica para colorir e centralizar a tabela ---
                 def formatar_tabela_percentual(col):
                     estilos = []
-                    # base_style força a centralização do conteúdo da célula
-                    base_style = 'text-align: center; vertical-align: middle; '
+                    base_style = 'text-align: center !important; vertical-align: middle !important; '
                     for val in col:
                         try:
                             num = float(str(val).replace('%', ''))
@@ -675,10 +680,12 @@ try:
                             estilos.append(base_style)
                     return estilos
 
-                # Aplica as propriedades gerais (centralização de todo o resto e cabeçalhos)
-                styler = df_exibicao_rel.style.set_properties(**{'text-align': 'center'}) \
+                styler = df_exibicao_rel.style.set_properties(**{'text-align': 'center !important'}) \
                             .apply(formatar_tabela_percentual, subset=['%']) \
-                            .set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
+                            .set_table_styles([
+                                dict(selector='th', props=[('text-align', 'center !important')]),
+                                dict(selector='td', props=[('text-align', 'center !important')])
+                            ])
 
                 # --- CRIAR GRÁFICO PLOTLY MODERNIZADO ---
                 fig = go.Figure()
