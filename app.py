@@ -565,12 +565,12 @@ try:
     # === PAINEL DE CONTROLE E VISUALIZAÇÃO ===
     st.subheader("📋 Painel de Controle e Visualização")
     
-    # 1. Relatório de Efetividade (Apenas RH e Analista)
+    # 1. Relatório de Efetividade (Apenas RH e Analista) agora é a PRIMEIRA opção
     mostrar_relatorio = False
     if perfil in ["analista", "rh"]:
         mostrar_relatorio = st.checkbox("📊 Visualizar Relatório de Efetividade (Vagas Abertas vs Concluídas)", value=False)
     
-    # 2. Localizador e Checkboxes
+    # 2. Localizador e Checkboxes seguintes
     focar_colaborador = st.checkbox(f"🔍 Focar visualização apenas no colaborador: {colaborador_final}" if colaborador_final else "🔍 Focar colaborador selecionado", value=False)
     
     def sync_expandir():
@@ -610,18 +610,34 @@ try:
         with col_d2:
             data_fim_filtro = st.date_input("Data Fim (Abertura):", value=hoje, format="DD/MM/YYYY")
 
-        if data_inicio_filtro and data_fim_filtro:
+        if data_fim_filtro:
             df_analise = df_loja.copy()
             df_analise['DataAbertura_DT'] = pd.to_datetime(df_analise['Data Abertura'], format='%d/%m/%Y', errors='coerce')
 
-            mascara_periodo = (df_analise['DataAbertura_DT'].dt.date >= data_inicio_filtro) & (df_analise['DataAbertura_DT'].dt.date <= data_fim_filtro)
+            # Lógica 3: Puxa TODOS os registros alterados (Possui_Alteracao_Sheets) 
+            # desde que a data não seja maior que a Data Fim selecionada.
+            mascara_periodo = (df_analise['Possui_Alteracao_Sheets'] == True) & (
+                (df_analise['DataAbertura_DT'].dt.date <= data_fim_filtro) | (df_analise['DataAbertura_DT'].isna())
+            )
             df_abertas_periodo = df_analise[mascara_periodo].copy()
 
             if df_abertas_periodo.empty:
-                st.info("Nenhuma vaga com Data de Abertura cadastrada neste período para esta(s) loja(s).")
+                st.info("Nenhuma vaga com alteração ou abertura encontrada até a data limite para esta(s) loja(s).")
             else:
                 abertas_por_loja = df_abertas_periodo.groupby('Loja').size().reset_index(name='Abertas')
-                df_abertas_periodo['Concluida'] = df_abertas_periodo['Data Admissão'].apply(lambda x: 1 if str(x).strip() not in ['-', '', 'nan', 'None'] else 0)
+                
+                # Lógica 4: Validação robusta de conclusão
+                def check_concluida(x):
+                    val = str(x).strip().lower()
+                    # Se for vazio, traço, nulo ou zero, ignora
+                    if val in ['-', '', 'nan', 'none', 'nat', '0', 'null']:
+                        return 0
+                    # Se tiver mais de 5 caracteres, é muito provável que seja uma data dd/mm ou yyyy
+                    if len(val) >= 5:
+                        return 1
+                    return 0
+                    
+                df_abertas_periodo['Concluida'] = df_abertas_periodo['Data Admissão'].apply(check_concluida)
                 concluidas_por_loja = df_abertas_periodo.groupby('Loja')['Concluida'].sum().reset_index(name='Concluídas')
 
                 df_relatorio = pd.merge(abertas_por_loja, concluidas_por_loja, on='Loja', how='outer').fillna(0)
@@ -643,19 +659,26 @@ try:
                 linha_total = pd.DataFrame([{"Loja": "Total", "Abertas": total_abertas, "Concluídas": total_concluidas, "%": f"{perc_total}%"}])
                 df_exibicao_rel = pd.concat([df_exibicao_rel, linha_total], ignore_index=True)
 
-                # --- Lógica para colorir a tabela ---
+                # --- Lógica para colorir e centralizar a tabela ---
                 def formatar_tabela_percentual(col):
                     estilos = []
+                    # base_style força a centralização do conteúdo da célula
+                    base_style = 'text-align: center; vertical-align: middle; '
                     for val in col:
                         try:
                             num = float(str(val).replace('%', ''))
                             if num >= 50:
-                                estilos.append('color: #10b981; font-weight: bold; background-color: rgba(16, 185, 129, 0.1);')
+                                estilos.append(base_style + 'color: #10b981; font-weight: bold; background-color: rgba(16, 185, 129, 0.1);')
                             else:
-                                estilos.append('color: #ef4444; font-weight: bold; background-color: rgba(239, 68, 68, 0.1);')
+                                estilos.append(base_style + 'color: #ef4444; font-weight: bold; background-color: rgba(239, 68, 68, 0.1);')
                         except:
-                            estilos.append('')
+                            estilos.append(base_style)
                     return estilos
+
+                # Aplica as propriedades gerais (centralização de todo o resto e cabeçalhos)
+                styler = df_exibicao_rel.style.set_properties(**{'text-align': 'center'}) \
+                            .apply(formatar_tabela_percentual, subset=['%']) \
+                            .set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
 
                 # --- CRIAR GRÁFICO PLOTLY MODERNIZADO ---
                 fig = go.Figure()
@@ -718,7 +741,7 @@ try:
                 st.markdown("<br>", unsafe_allow_html=True)
                 col_tab, col_graf = st.columns([1, 2.5])
                 with col_tab:
-                    st.dataframe(df_exibicao_rel.style.apply(formatar_tabela_percentual, subset=['%']), hide_index=True, use_container_width=True)
+                    st.dataframe(styler, hide_index=True, use_container_width=True)
                 with col_graf:
                     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
         
@@ -807,11 +830,9 @@ try:
 <tbody>
 """
                 
-                # 🌟 NOVO: Lógica da tabela com "Pills" e Title Case no nome
                 for _, row in df_filtrado.iterrows():
                     html_tabela += "<tr>\n"
                     
-                    # Coluna de Status Principal (Usa Badge)
                     badge_status = obter_badge_status(row['Situação'])
                     html_tabela += f"<td style='text-align: center;'>{badge_status}</td>\n"
                     
@@ -826,12 +847,10 @@ try:
                             html_tabela += f'<td class="celula-loja">{val_formatado}</td>\n'
                         
                         elif col_nome == 'Nome':
-                            # Transforma "JOÃO DA SILVA" em "João Da Silva"
                             val_formatado = str(val_original).title()
                             html_tabela += f"<td>{val_formatado}</td>\n"
                             
                         elif col_nome == 'Status RH':
-                            # Coluna de Status RH (Usa Badge)
                             badge_rh = obter_badge_rh(val_original)
                             html_tabela += f"<td style='text-align: center;'>{badge_rh}</td>\n"
                             
