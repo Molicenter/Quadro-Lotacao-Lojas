@@ -513,13 +513,8 @@ try:
     # =========================================================
     # 🏪 5. INDICADORES E MATRIZ VISUAL CENTRAL
     # =========================================================
-    col_titulo, col_filtro_sheets = st.columns([1.5, 1], vertical_alignment="center")
-    with col_titulo:
-        texto_titulo = f"Loja {int(loja_selecionada):02d}" if isinstance(loja_selecionada, int) else str(loja_selecionada)
-        st.markdown(f"### 🏪 Quadro de Funcionários - {texto_titulo}")
-        
-    with col_filtro_sheets:
-        apenas_alterados = st.checkbox("📋 Visualizar apenas registros alterados/inseridos (Geral)", value=False)
+    texto_titulo = f"Loja {int(loja_selecionada):02d}" if isinstance(loja_selecionada, int) else str(loja_selecionada)
+    st.markdown(f"### 🏪 Quadro de Funcionários - {texto_titulo}")
 
     df_loja['Situação_Upper'] = df_loja['Situação'].astype(str).str.upper()
     
@@ -564,21 +559,24 @@ try:
     st.markdown("---")
 
     st.subheader("📋 Distribuição por Setor e Cargo")
-    col_busca, col_botoes_expander = st.columns([1.5, 1], vertical_alignment="bottom")
     
-    with col_busca:
-        st.markdown("🔍 **Localizador Rápido**")
-        focar_colaborador = st.checkbox(f"Focar visualização apenas no colaborador: {colaborador_final}" if colaborador_final else "Focar colaborador selecionado", value=False)
+    # === NOVOS CONTROLES (LOCALIZADOR, CHECKBOXES E ATUALIZAR) EMPILHADOS ===
+    st.markdown("🔍 **Localizador Rápido**")
+    focar_colaborador = st.checkbox(f"Focar visualização apenas no colaborador: {colaborador_final}" if colaborador_final else "Focar colaborador selecionado", value=False)
     
-    with col_botoes_expander:
-        if st.session_state["expander_global"]:
-            if st.button("📁 Recolher Todos os Departamentos", use_container_width=True):
-                st.session_state["expander_global"] = False
-                st.rerun()
-        else:
-            if st.button("📂 Expandir Todos os Departamentos", use_container_width=True):
-                st.session_state["expander_global"] = True
-                st.rerun()
+    st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+    
+    apenas_alterados = st.checkbox("📝 Visualizar apenas registros alterados/inseridos (Geral)", value=False)
+    
+    expandir_todos = st.checkbox("📂 Expandir Todos os Departamentos", value=st.session_state.get("expander_global", False))
+    st.session_state["expander_global"] = expandir_todos
+
+    if st.button("🔄 Atualizar Registros", type="primary"):
+        st.cache_data.clear() # Limpa o cache e força nova leitura da API Google Sheets
+        st.rerun()
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    # =========================================================================
 
     if apenas_alterados:
         df_exibicao = df_loja[df_loja['Possui_Alteracao_Sheets'] == True]
