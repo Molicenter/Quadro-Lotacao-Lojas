@@ -141,23 +141,29 @@ if not st.session_state["logado"]:
             
             st.divider() 
             
-            user_input = st.text_input("E-mail corporativo:", placeholder="usuario@molicenter.com.br")
+            # --- CÓDIGO AJUSTADO: Usando selectbox em vez de text_input ---
+            lista_usuarios = ["Selecione o usuário..."] + list(USUARIOS_DB.keys())
+            user_input = st.selectbox("E-mail corporativo:", lista_usuarios)
             pass_input = st.text_input("Senha de acesso:", type="password", placeholder="••••••••")
-            
+            # --------------------------------------------------------------
+
             st.markdown("<br>", unsafe_allow_html=True)
             
             if st.button("Entrar no Sistema", use_container_width=True, type="primary"):
-                user_clean = user_input.strip().lower()
-                if user_clean in USUARIOS_DB and USUARIOS_DB[user_clean]["senha"] == pass_input:
-                    st.session_state["logado"] = True
-                    st.session_state["usuario"] = user_clean
-                    st.session_state["perfil"] = USUARIOS_DB[user_clean]["perfil"]
-                    st.session_state["loja_fixa"] = USUARIOS_DB[user_clean]["loja_fixa"]
-                    st.success("Acesso concedido!")
-                    time.sleep(0.5)
-                    st.rerun()
+                if user_input == "Selecione o usuário...":
+                    st.warning("Por favor, selecione um usuário válido na lista.")
                 else:
-                    st.error("Usuário ou senha incorretos. Tente novamente.")
+                    user_clean = user_input.strip().lower()
+                    if user_clean in USUARIOS_DB and USUARIOS_DB[user_clean]["senha"] == pass_input:
+                        st.session_state["logado"] = True
+                        st.session_state["usuario"] = user_clean
+                        st.session_state["perfil"] = USUARIOS_DB[user_clean]["perfil"]
+                        st.session_state["loja_fixa"] = USUARIOS_DB[user_clean]["loja_fixa"]
+                        st.success("Acesso concedido!")
+                        time.sleep(0.5)
+                        st.rerun()
+                    else:
+                        st.error("Usuário ou senha incorretos. Tente novamente.")
     st.stop()
 
 # =========================================================
