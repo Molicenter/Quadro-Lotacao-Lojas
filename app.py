@@ -141,11 +141,9 @@ if not st.session_state["logado"]:
             
             st.divider() 
             
-            # --- CÓDIGO AJUSTADO: Usando selectbox em vez de text_input ---
             lista_usuarios = ["Selecione o usuário..."] + list(USUARIOS_DB.keys())
             user_input = st.selectbox("E-mail corporativo:", lista_usuarios)
             pass_input = st.text_input("Senha de acesso:", type="password", placeholder="••••••••")
-            # --------------------------------------------------------------
 
             st.markdown("<br>", unsafe_allow_html=True)
             
@@ -503,14 +501,12 @@ try:
         # 🔒 VALIDAÇÃO DE CAMPOS (TRAVA DE SALVAMENTO PARA TODOS)
         # ==============================================================
         if submit_button:
-            # Prepara os valores para validação (garante que sejam strings limpas)
             val_data = str(nova_data_abertura).strip()
             val_resp = str(novo_responsavel).strip()
             val_horario = str(novo_horario_contrato).strip()
             val_sexo = str(novo_sexo).strip()
             val_motivo = str(novo_motivo).strip()
 
-            # Dicionário mapeando apenas as colunas do "DONO: GERENTE"
             campos_validacao_gerente = {
                 "Data Abertura": val_data,
                 "Responsável": val_resp,
@@ -519,7 +515,6 @@ try:
                 "Motivo": val_motivo
             }
             
-            # Checa se há campos essenciais com valores vazios ou não preenchidos ("-")
             campos_faltantes = [nome for nome, valor in campos_validacao_gerente.items() if valor in ["-", "", "None", "nan"]]
 
             if tipo_registro == "Cadastrar Novo / Não Listado" and not colaborador_final:
@@ -527,7 +522,8 @@ try:
             elif len(campos_faltantes) > 0:
                 st.sidebar.error(f"⚠️ Atenção! Preencha os campos obrigatórios do Gerente: **{', '.join(campos_faltantes)}**")
             else:
-                with st.spinner("⏳ Processando e enviando para o Google Sheets..."):
+                # --- MODIFICAÇÃO PRINCIPAL AQUI: Mensagem clara de sincronização ---
+                with st.spinner("⏳ Processando e enviando para o Google Sheets (isso leva alguns segundos)..."):
                     loja_salvamento = int(dados_func['Loja']) if (dados_func is not None) else (int(loja_selecionada) if isinstance(loja_selecionada, int) else 1)
                     
                     payload = {
@@ -544,7 +540,10 @@ try:
                         if res.status_code == 200:
                             st.sidebar.success("✅ Dados salvos com sucesso!")
                             st.cache_data.clear()
-                            time.sleep(1.5)
+                            
+                            # --- MODIFICAÇÃO PRINCIPAL AQUI: Aumento do delay para evitar Race Condition ---
+                            time.sleep(3.5) # Tempo aumentado para que o Google Sheets propague a informação antes de recarregar
+                            
                             st.rerun()
                         else:
                             st.sidebar.error("Erro ao comunicar com a API do Sheets.")
@@ -601,29 +600,24 @@ try:
     # === PAINEL DE CONTROLE E VISUALIZAÇÃO ===
     st.subheader("📋 Painel de Controle e Visualização")
     
-    # 1. Focar Colaborador
     focar_colaborador = st.checkbox(f"🔍 Focar visualização apenas no colaborador: {colaborador_final}" if colaborador_final else "🔍 Focar colaborador selecionado", value=False)
     
-    # 2. Relatório de Efetividade (Apenas RH e Analista)
     mostrar_relatorio = False
     if perfil in ["analista", "rh"]:
         mostrar_relatorio = st.checkbox("📊 Visualizar Relatório de Efetividade (Vagas Abertas vs Concluídas)", value=False)
     
-    # Callback para sincronizar o checkbox de expandir com o de alterados
     def sync_expandir():
         if st.session_state["chk_alterados"]:
             st.session_state["expander_global"] = True
         else:
             st.session_state["expander_global"] = False
             
-    # 3. Apenas Alterados
     apenas_alterados = st.checkbox(
         "📝 Visualizar apenas registros alterados/inseridos (Geral)", 
         key="chk_alterados",
         on_change=sync_expandir
     )
     
-    # 4. Expandir Todos
     expandir_todos = st.checkbox(
         "📂 Expandir Todos os Departamentos", 
         key="expander_global"
@@ -689,7 +683,6 @@ try:
                 concluidas_y = df_exibicao_rel['Concluídas'].tolist() + [total_concluidas]
                 perc_y = df_exibicao_rel['%'].tolist() + [perc_total]
 
-                # --- CRIAR GRÁFICO PLOTLY MODERNIZADO ---
                 fig = go.Figure()
 
                 fig.add_trace(go.Bar(
@@ -747,7 +740,6 @@ try:
                     hovermode="x unified" 
                 )
 
-                # --- TABELA HTML CONSTRUÍDA SEM ESPAÇOS ---
                 html_resumo = "<div class='tabela-container'>\n<table class='tabela-resumo'>\n<thead>\n<tr>\n"
                 html_resumo += "<th>Loja</th>\n<th>Abertas</th>\n<th>Concluídas</th>\n<th>%</th>\n"
                 html_resumo += "</tr>\n</thead>\n<tbody>\n"
@@ -784,7 +776,7 @@ try:
                 with col_graf:
                     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
         
-        st.markdown("---") # Divisor antes de carregar a estrutura de departamentos abaixo
+        st.markdown("---") 
 
     # =========================================================================
 
