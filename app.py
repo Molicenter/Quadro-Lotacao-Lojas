@@ -390,7 +390,12 @@ try:
     # 🛠️ BARRA LATERAL (SIDEBAR) - FORMULÁRIO OPERACIONAL
     # =========================================================
     st.sidebar.header("📝 Alimentar Informações")
-    tipo_registro = st.sidebar.radio("Modo de Operação:", ["Editar Colaborador Existente", "Cadastrar Novo / Não Listado"])
+    
+    if st.session_state["perfil"] == "gerente":
+        st.sidebar.markdown("**Modo de Operação:** Editar Colaborador Existente")
+        tipo_registro = "Editar Colaborador Existente"
+    else:
+        tipo_registro = st.sidebar.radio("Modo de Operação:", ["Editar Colaborador Existente", "Cadastrar Novo / Não Listado"])
     
     dados_func = None
     colaborador_final = ""
@@ -522,7 +527,6 @@ try:
             elif len(campos_faltantes) > 0:
                 st.sidebar.error(f"⚠️ Atenção! Preencha os campos obrigatórios do Gerente: **{', '.join(campos_faltantes)}**")
             else:
-                # --- MODIFICAÇÃO PRINCIPAL AQUI: Mensagem clara de sincronização ---
                 with st.spinner("⏳ Processando e enviando para o Google Sheets (isso leva alguns segundos)..."):
                     loja_salvamento = int(dados_func['Loja']) if (dados_func is not None) else (int(loja_selecionada) if isinstance(loja_selecionada, int) else 1)
                     
@@ -541,8 +545,7 @@ try:
                             st.sidebar.success("✅ Dados salvos com sucesso!")
                             st.cache_data.clear()
                             
-                            # --- MODIFICAÇÃO PRINCIPAL AQUI: Aumento do delay para evitar Race Condition ---
-                            time.sleep(3.5) # Tempo aumentado para que o Google Sheets propague a informação antes de recarregar
+                            time.sleep(3.5)
                             
                             st.rerun()
                         else:
