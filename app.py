@@ -118,6 +118,10 @@ if "expander_global" not in st.session_state:
 if "chk_alterados" not in st.session_state:
     st.session_state["chk_alterados"] = False
 
+# NOVO: Filtro para os cards de status
+if "filtro_cards" not in st.session_state:
+    st.session_state["filtro_cards"] = "TODOS"
+
 # =========================================================
 # 🔐 2. INTERFACE DA TELA DE LOGIN
 # =========================================================
@@ -175,25 +179,6 @@ st.markdown("""
     [data-testid="stAppViewBlockContainer"] { padding-left: 1.2rem !important; padding-right: 1.2rem !important; padding-top: 0.5rem !important; max-width: 100% !important; }
     [data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
     
-    /* ESTILOS DOS CARDS DE MÉTRICAS */
-    .metric-container { display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap; }
-    .metric-card {
-        background-color: #1e293b; border-radius: 8px; padding: 15px 10px; flex: 1; min-width: 120px;
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        border: 1px solid #334155; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.2s;
-    }
-    .metric-card:hover { transform: translateY(-3px); border-color: #475569; }
-    .metric-icon { font-size: 22px; margin-bottom: 8px; }
-    .metric-value { font-size: 28px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
-    .metric-label { font-size: 13px; color: #cbd5e1; font-weight: 500; }
-    
-    /* Cores das Métricas */
-    .c-ativo { color: #10b981; }      /* Verde */
-    .c-ferias { color: #3b82f6; }     /* Azul */
-    .c-demitido { color: #ef4444; }   /* Vermelho */
-    .c-afastado { color: #f59e0b; }   /* Laranja */
-    .c-alterado { color: #8b5cf6; }   /* Roxo */
-
     /* ESTILOS DOS BADGES (PÍLULAS) NA TABELA PRINCIPAL */
     .badge {
         display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 11.5px;
@@ -215,7 +200,7 @@ st.markdown("""
     .ql-table tbody tr:hover { background-color: #334155 !important; transition: 0.2s; }
     .celula-loja { text-align: center !important; font-weight: bold !important; color: #38bdf8 !important; }
     
-    /* === NOVO: ESTILOS EXCLUSIVOS DA TABELA DE RESUMO (RELATÓRIO) === */
+    /* === ESTILOS EXCLUSIVOS DA TABELA DE RESUMO (RELATÓRIO) === */
     .tabela-resumo { width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 13px; color: #ffffff; }
     .tabela-resumo th { padding: 10px; background-color: #1e293b; border-bottom: 2px solid #475569; text-align: center !important; font-weight: 600; }
     .tabela-resumo td { padding: 10px; border-bottom: 1px solid #334155; text-align: center !important; vertical-align: middle; }
@@ -567,36 +552,27 @@ try:
     afastados_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('AFASTAMENTO|AFASTADO')])
     alterados_qtd = len(df_loja[df_loja['Possui_Alteracao_Sheets'] == True])
 
-    html_cards = f"""
-    <div class="metric-container">
-        <div class="metric-card">
-            <i class="fa-solid fa-users metric-icon c-ativo"></i>
-            <div class="metric-value c-ativo">{ativos_qtd}</div>
-            <div class="metric-label">Ativos</div>
-        </div>
-        <div class="metric-card">
-            <i class="fa-solid fa-umbrella-beach metric-icon c-ferias"></i>
-            <div class="metric-value c-ferias">{ferias_qtd}</div>
-            <div class="metric-label">Férias</div>
-        </div>
-        <div class="metric-card">
-            <i class="fa-solid fa-user-minus metric-icon c-demitido"></i>
-            <div class="metric-value c-demitido">{demitidos_qtd}</div>
-            <div class="metric-label">Demitidos</div>
-        </div>
-        <div class="metric-card">
-            <i class="fa-solid fa-clock-rotate-left metric-icon c-afastado"></i>
-            <div class="metric-value c-afastado">{afastados_qtd}</div>
-            <div class="metric-label">Afastamentos</div>
-        </div>
-        <div class="metric-card">
-            <i class="fa-solid fa-pen-to-square metric-icon c-alterado"></i>
-            <div class="metric-value c-alterado">{alterados_qtd}</div>
-            <div class="metric-label">Alterados</div>
-        </div>
-    </div>
-    """
-    st.markdown(html_cards, unsafe_allow_html=True)
+    # Lógica de clique: Atualiza o filtro e força os expansores a abrirem
+    def aplicar_filtro_card(status):
+        if st.session_state["filtro_cards"] == status:
+            st.session_state["filtro_cards"] = "TODOS"
+        else:
+            st.session_state["filtro_cards"] = status
+            st.session_state["expander_global"] = True
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    c1, c2, c3, c4, c5 = st.columns(5)
+
+    with c1:
+        st.button(f"🟢 {ativos_qtd} Ativos", on_click=aplicar_filtro_card, args=("ATIVO",), use_container_width=True)
+    with c2:
+        st.button(f"🔵 {ferias_qtd} Férias", on_click=aplicar_filtro_card, args=("FERIAS",), use_container_width=True)
+    with c3:
+        st.button(f"🔴 {demitidos_qtd} Demitidos", on_click=aplicar_filtro_card, args=("DEMITIDO",), use_container_width=True)
+    with c4:
+        st.button(f"🟠 {afastados_qtd} Afastados", on_click=aplicar_filtro_card, args=("AFASTADO",), use_container_width=True)
+    with c5:
+        st.button(f"🟣 {alterados_qtd} Alterados", on_click=aplicar_filtro_card, args=("ALTERADOS",), use_container_width=True)
 
     st.markdown("---")
     
@@ -782,12 +758,26 @@ try:
         st.markdown("---") 
 
     # =========================================================================
-
-    if apenas_alterados:
+    # Lógica combinada: Checkbox de alterados + Filtro dos Botões
+    if apenas_alterados or st.session_state["filtro_cards"] == "ALTERADOS":
         df_exibicao = df_loja[df_loja['Possui_Alteracao_Sheets'] == True]
         st.info("💡 Exibindo estritamente colaboradores com digitação salva no Google Sheets.")
     else:
         df_exibicao = df_loja.copy()
+
+    # Filtra o dataframe principal se algum botão de status for clicado
+    filtro_atual = st.session_state["filtro_cards"]
+    if filtro_atual not in ["TODOS", "ALTERADOS"]:
+        if filtro_atual == "ATIVO":
+            df_exibicao = df_exibicao[df_exibicao['Situação_Upper'].str.contains('ATIVO')]
+        elif filtro_atual == "FERIAS":
+            df_exibicao = df_exibicao[df_exibicao['Situação_Upper'].str.contains('FÉRIAS|FERIAS')]
+        elif filtro_atual == "DEMITIDO":
+            df_exibicao = df_exibicao[df_exibicao['Situação_Upper'].str.contains('DEMITIDO')]
+        elif filtro_atual == "AFASTADO":
+            df_exibicao = df_exibicao[df_exibicao['Situação_Upper'].str.contains('AFASTAMENTO|AFASTADO')]
+        
+        st.warning(f"🔍 Tabela filtrada pelo status: **{filtro_atual}**. Clique no botão novamente para remover o filtro.")
 
     departamentos = sorted(df_exibicao['Dept'].dropna().unique())
 
