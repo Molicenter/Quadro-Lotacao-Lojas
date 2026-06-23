@@ -33,6 +33,15 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
+# Função auxiliar para higienizar strings nulas vindas do Pandas/Supabase
+def limpar_campo(valor, padrao="-"):
+    if pd.isna(valor):
+        return padrao
+    v_str = str(valor).strip()
+    if v_str.lower() in ["nan", "none", "null", "nat", "<na>", ""]:
+        return padrao
+    return v_str
+
 # Funções para gerar os "Badges" (Pílulas) de Status
 def obter_badge_status(status):
     status_upper = str(status).strip().upper()
@@ -42,19 +51,19 @@ def obter_badge_status(status):
         return f'<span class="badge badge-ferias">{status}</span>'
     elif "AFASTAMENTO" in status_upper or "AFASTADO" in status_upper:
         return f'<span class="badge badge-afastado">{status}</span>'
-    elif "DEMITIDO" in status_upper:
-        return f'<span class="badge badge-demitido">{status}</span>'
+    elif "DEMITIDO" in status_upper or status_upper in ["NAN", "NONE", ""]:
+        return f'<span class="badge badge-demitido">Demitido</span>'
     return f'<span class="badge" style="background-color:#475569; color:white;">{status}</span>'
 
 def obter_badge_rh(status):
     status_str = str(status).strip()
-    if status_str in ["nan", "None", "", "-"]:
-        return status_str
+    if status_str in ["nan", "None", "", "-", "null"]:
+        return "-"
     return f'<span class="badge badge-rh">{status_str}</span>'
 
 def formatar_data_br(valor):
     val_str = str(valor).strip()
-    if val_str in ["nan", "None", "", "-", "0"]:
+    if val_str.lower() in ["nan", "none", "", "-", "0", "null"]:
         return "-"
     try:
         if "T" in val_str:
@@ -263,19 +272,26 @@ def carregar_dados_completos():
             idx_list = df[(df['Nome'] == nome_func) & (df['Loja'] == loja_reg)].index
             if len(idx_list) > 0:
                 idx = idx_list[0]
-                sigla_sexo = str(registro.get('Sexo', '-')).strip()
-                sexo_exibicao = MAPA_SIGLA_SEXO.get(sigla_sexo, sigla_sexo)
-                if 'Situação' in registro and str(registro.get('Situação')).strip() not in ["", "-"]:
-                    df.at[idx, 'Situação'] = registro.get('Situação')
-                df.at[idx, 'Observação'] = registro.get('Observação', '-')
-                df.at[idx, 'Data Abertura'] = formatar_data_br(registro.get('Data Abertura', '-'))
-                df.at[idx, 'Responsável'] = registro.get('Responsável', '-')
-                df.at[idx, 'Horário Contrato'] = str(registro.get('Horário Contrato', '-'))
-                df.at[idx, 'Sexo'] = sexo_exibicao
-                df.at[idx, 'Motivo'] = registro.get('Motivo', '-')
-                df.at[idx, 'Status RH'] = registro.get('Status RH', '-')
-                df.at[idx, 'Candidato'] = registro.get('Candidato', '-')
-                df.at[idx, 'Data Admissão'] = formatar_data_br(registro.get('Data Admissão', '-'))
+                
+                # Tratamento explícito para Situação não herdar string 'nan'
+                sit_val = limpar_campo(registro.get('Situação'), "Demitido")
+                if sit_val == "-":
+                    sit_val = "Demitido"
+                df.at[idx, 'Situação'] = sit_val
+                
+                # Tratamento preventivo de strings textuais 'nan' nas colunas do banco
+                df.at[idx, 'Observação'] = limpar_campo(registro.get('Observação'))
+                df.at[idx, 'Data Abertura'] = formatar_data_br(registro.get('Data Abertura'))
+                df.at[idx, 'Responsável'] = limpar_campo(registro.get('Responsável'))
+                df.at[idx, 'Horário Contrato'] = limpar_campo(registro.get('Horário Contrato'))
+                
+                sigla_sexo = limpar_campo(registro.get('Sexo'))
+                df.at[idx, 'Sexo'] = MAPA_SIGLA_SEXO.get(sigla_sexo, sigla_sexo)
+                
+                df.at[idx, 'Motivo'] = limpar_campo(registro.get('Motivo'))
+                df.at[idx, 'Status RH'] = limpar_campo(registro.get('Status RH'))
+                df.at[idx, 'Candidato'] = limpar_campo(registro.get('Candidato'))
+                df.at[idx, 'Data Admissão'] = formatar_data_br(registro.get('Data Admissão'))
                 df.at[idx, 'Possui_Alteracao_Sheets'] = True
                 mapeados.add((nome_func, loja_reg))
 
@@ -288,25 +304,30 @@ def carregar_dados_completos():
                 loja_reg = 0
             
             if (nome_func, loja_reg) not in mapeados:
-                data_ad_checar = formatar_data_br(registro.get('Data Admissão', '-'))
+                data_ad_checar = formatar_data_br(registro.get('Data Admissão'))
                 
-                sigla_sexo = str(registro.get('Sexo', '-')).strip()
+                sigla_sexo = limpar_campo(registro.get('Sexo'))
                 sexo_exibicao = MAPA_SIGLA_SEXO.get(sigla_sexo, sigla_sexo)
                 
-                dept_final = registro.get('Dept') if registro.get('Dept') else 'HISTÓRICO / EX-COLABORADORES'
-                funcao_final = registro.get('Função') if registro.get('Função') else 'Sem Vínculo Atual'
-                situacao_final = registro.get('Situação') if registro.get('Situação') else 'Demitido'
+                dept_final = limpar_campo(registro.get('Dept'), 'HISTÓRICO / EX-COLABORADORES')
+                if dept_final == "-": dept_final = 'HISTÓRICO / EX-COLABORADORES'
+                
+                funcao_final = limpar_campo(registro.get('Função'), 'Sem Vínculo Atual')
+                if funcao_final == "-": funcao_final = 'Sem Vínculo Atual'
+                
+                situacao_final = limpar_campo(registro.get('Situação'), 'Demitido')
+                if situacao_final == "-": situacao_final = 'Demitido'
                 
                 linha_manual = {
                     'Loja': loja_reg, 'Nome': nome_func, 'Situação': situacao_final, 
                     'Dept': dept_final, 'Função': funcao_final, 'Horario_Sistema_Real': '-',
-                    'Observação': registro.get('Observação', '-'),
-                    'Data Abertura': formatar_data_br(registro.get('Data Abertura', '-')),
-                    'Responsável': registro.get('Responsável', '-'),
-                    'Horário Contrato': str(registro.get('Horário Contrato', '-')),
-                    'Sexo': sexo_exibicao, 'Motivo': registro.get('Motivo', '-'),
-                    'Status RH': registro.get('Status RH', '-'),
-                    'Candidato': registro.get('Candidato', '-'),
+                    'Observação': limpar_campo(registro.get('Observação')),
+                    'Data Abertura': formatar_data_br(registro.get('Data Abertura')),
+                    'Responsável': limpar_campo(registro.get('Responsável')),
+                    'Horário Contrato': limpar_campo(registro.get('Horário Contrato')),
+                    'Sexo': sexo_exibicao, 'Motivo': limpar_campo(registro.get('Motivo')),
+                    'Status RH': limpar_campo(registro.get('Status RH')),
+                    'Candidato': limpar_campo(registro.get('Candidato')),
                     'Data Admissão': data_ad_checar, 'Possui_Alteracao_Sheets': True
                 }
                 linhas_novas_manuais.append(linha_manual)
@@ -399,9 +420,15 @@ try:
         if colaborador_selecionado:
             dados_func = df_loja[df_loja['Nome'] == colaborador_selecionado].iloc[0]
             colaborador_final = colaborador_selecionado
-            dept_final = str(dados_func['Dept'])
-            funcao_final = str(dados_func['Função'])
-            situacao_final = str(dados_func['Situação'])
+            dept_final = str(dados_func['Dept']).strip()
+            funcao_final = str(dados_func['Função']).strip()
+            
+            # Sanitiza a situação para que valores em branco ou textuais sujos fiquem como Demitido por padrão
+            sit_temp = str(dados_func['Situação']).strip()
+            if sit_temp.lower() in ["nan", "none", "null", ""]:
+                situacao_final = "Demitido"
+            else:
+                situacao_final = sit_temp
     else:
         st.sidebar.markdown("---")
         colaborador_final = st.sidebar.text_input("Nome Completo do Colaborador:").strip().upper()
@@ -421,8 +448,18 @@ try:
     if colaborador_final:
         with st.sidebar.form("form_edicao_ql", border=True):
             st.markdown("### Atualizar Dados")
+            
+            # Função utilitária para capturar e limpar o valor padrão antes de injetar nos inputs do formulário lateral
+            def obter_val_default(campo, v_padrao=""):
+                if dados_func is None:
+                    return v_padrao
+                val = str(dados_func[campo]).strip()
+                if val.lower() in ["nan", "none", "null", "-", ""]:
+                    return v_padrao
+                return val
+
             st.markdown("🔸 **Supervisor**")
-            val_obs_default = str(dados_func['Observação']) if (dados_func is not None and str(dados_func['Observação']) != "-") else ""
+            val_obs_default = obter_val_default('Observação', "")
             if perfil in ["analista", "rh", "supervisor"]:
                 nova_obs = st.text_area("Observação:", value=val_obs_default)
             else:
@@ -431,7 +468,7 @@ try:
             
             st.markdown("🔹 **Gerente**")
             if perfil in ["analista", "rh", "supervisor", "gerente"]:
-                data_ab_atual = str(dados_func['Data Abertura']).strip() if dados_func is not None else "-"
+                data_ab_atual = obter_val_default('Data Abertura', "-")
                 try:
                     data_ab_default = datetime.strptime(data_ab_atual, "%d/%m/%Y").date() if data_ab_atual != "-" else date.today()
                 except:
@@ -439,39 +476,39 @@ try:
                 nova_data_ab_col = st.date_input("Data Abertura:", value=data_ab_default, format="DD/MM/YYYY")
                 nova_data_abertura = nova_data_ab_col.strftime("%d/%m/%Y")
                 
-                val_resp_default = str(dados_func['Responsável']) if (dados_func is not None and str(dados_func['Responsável']) != "-") else ""
+                val_resp_default = obter_val_default('Responsável', "")
                 novo_responsavel = st.text_input("Responsável:", value=val_resp_default)
                 
-                val_horario_default = str(dados_func['Horário Contrato']).strip() if dados_func is not None else "-"
+                val_horario_default = obter_val_default('Horário Contrato', "-")
                 idx_horario = OPCOES_HORARIO.index(val_horario_default) if val_horario_default in OPCOES_HORARIO else 0
                 novo_horario_contrato = st.selectbox("Horário Contrato:", OPCOES_HORARIO, index=idx_horario)
                 
-                sexo_exibido_atual = str(dados_func['Sexo']).strip() if dados_func is not None else "-"
+                sexo_exibido_atual = obter_val_default('Sexo', "-")
                 idx_sexo = OPCOES_SEXO.index(sexo_exibido_atual) if sexo_exibido_atual in OPCOES_SEXO else 0
                 texto_sexo_selecionado = st.selectbox("Sexo:", OPCOES_SEXO, index=idx_sexo)
                 novo_sexo = MAPA_SEXO_SIGLA.get(texto_sexo_selecionado, "-")
                 
-                motivo_atual = str(dados_func['Motivo']).strip() if dados_func is not None else "-"
+                motivo_atual = obter_val_default('Motivo', "-")
                 idx_motivo = OPCOES_MOTIVO.index(motivo_atual) if motivo_atual in OPCOES_MOTIVO else 0
                 novo_motivo = st.selectbox("Motivo:", OPCOES_MOTIVO, index=idx_motivo)
             else:
-                nova_data_abertura = st.text_input("Data Abertura:", value=str(dados_func['Data Abertura']) if dados_func is not None else "-", disabled=True)
-                novo_responsavel = st.text_input("Responsável:", value=str(dados_func['Responsável']) if dados_func is not None else "-", disabled=True)
-                novo_horario_contrato = st.text_input("Horário Contrato:", value=str(dados_func['Horário Contrato']) if dados_func is not None else "-", disabled=True)
-                novo_sexo_exibido = st.text_input("Sexo:", value=str(dados_func['Sexo']) if dados_func is not None else "-", disabled=True)
+                nova_data_abertura = st.text_input("Data Abertura:", value=obter_val_default('Data Abertura', "-"), disabled=True)
+                novo_responsavel = st.text_input("Responsável:", value=obter_val_default('Responsável', "-"), disabled=True)
+                novo_horario_contrato = st.text_input("Horário Contrato:", value=obter_val_default('Horário Contrato', "-"), disabled=True)
+                novo_sexo_exibido = st.text_input("Sexo:", value=obter_val_default('Sexo', "-"), disabled=True)
                 novo_sexo = MAPA_SEXO_SIGLA.get(novo_sexo_exibido, "-")
-                novo_motivo = st.text_input("Motivo:", value=str(dados_func['Motivo']) if dados_func is not None else "-", disabled=True)
+                novo_motivo = st.text_input("Motivo:", value=obter_val_default('Motivo', "-"), disabled=True)
             
             st.markdown("🔺 **Recursos Humanos (RH)**")
             if perfil in ["analista", "rh"]:
-                status_atual = str(dados_func['Status RH']).strip() if dados_func is not None else "-"
+                status_atual = obter_val_default('Status RH', "-")
                 idx_status = OPCOES_STATUS_RH.index(status_atual) if status_atual in OPCOES_STATUS_RH else 0
                 novo_status_rh = st.selectbox("Status RH:", OPCOES_STATUS_RH, index=idx_status)
                 
-                val_cand_default = str(dados_func['Candidato']) if (dados_func is not None and str(dados_func['Candidato']) != "-") else ""
+                val_cand_default = obter_val_default('Candidato', "")
                 novo_candidato = st.text_input("Candidato:", value=val_cand_default)
                 
-                data_ad_atual = str(dados_func['Data Admissão']).strip() if dados_func is not None else "-"
+                data_ad_atual = obter_val_default('Data Admissão', "-")
                 tem_data_anterior = data_ad_atual != "-"
                 
                 definir_data = st.checkbox("Definir data de admissão", value=tem_data_anterior)
@@ -486,9 +523,9 @@ try:
                 else:
                     nova_data_admissao = "-"
             else:
-                novo_status_rh = st.text_input("Status RH:", value=str(dados_func['Status RH']) if dados_func is not None else "-", disabled=True)
-                novo_candidato = st.text_input("Candidato:", value=str(dados_func['Candidato']) if dados_func is not None else "-", disabled=True)
-                nova_data_admissao = st.text_input("Data Admissão:", value=str(dados_func['Data Admissão']) if dados_func is not None else "-", disabled=True)
+                novo_status_rh = st.text_input("Status RH:", value=obter_val_default('Status RH', "-"), disabled=True)
+                novo_candidato = st.text_input("Candidato:", value=obter_val_default('Candidato', "-"), disabled=True)
+                nova_data_admissao = st.text_input("Data Admissão:", value=obter_val_default('Data Admissão', "-"), disabled=True)
             
             submit_button = st.form_submit_button("💾 Salvar Alterações", use_container_width=True, type="primary")
 
@@ -526,14 +563,14 @@ try:
                         "Dept": dept_final, 
                         "Função": funcao_final,
                         "Situação": situacao_final, 
-                        "Observação": nova_obs, 
+                        "Observação": str(nova_obs).strip() if nova_obs else "-", 
                         "Data Abertura": nova_data_abertura,
-                        "Responsável": novo_responsavel, 
+                        "Responsável": str(novo_responsavel).strip() if novo_responsavel else "-", 
                         "Horário Contrato": str(novo_horario_contrato),
                         "Sexo": novo_sexo, 
                         "Motivo": novo_motivo, 
-                        "Status RH": novo_status_rh,
-                        "Candidato": novo_candidato, 
+                        "Status RH": str(novo_status_rh).strip() if novo_status_rh else "-",
+                        "Candidato": str(novo_candidato).strip() if novo_candidato else "-", 
                         "Data Admissão": nova_data_admissao,
                         "Usuario": st.session_state["usuario"]
                     }
@@ -566,7 +603,7 @@ try:
     
     ativos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('ATIVO')])
     ferias_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('FÉRIAS|FERIAS')])
-    demitidos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('DEMITIDO')])
+    demitidos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('DEMITIDO') | df_loja['Situação_Upper'].isin(['NAN', 'NONE', ''])])
     afastados_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('AFASTAMENTO|AFASTADO')])
     alterados_qtd = len(df_loja[df_loja['Possui_Alteracao_Sheets'] == True])
 
@@ -790,7 +827,7 @@ try:
         elif filtro_atual == "FERIAS":
             df_exibicao = df_exibicao[df_exibicao['Situação_Upper'].str.contains('FÉRIAS|FERIAS')]
         elif filtro_atual == "DEMITIDO":
-            df_exibicao = df_exibicao[df_exibicao['Situação_Upper'].str.contains('DEMITIDO')]
+            df_exibicao = df_exibicao[df_exibicao['Situação_Upper'].str.contains('DEMITIDO') | df_exibicao['Situação_Upper'].isin(['NAN', 'NONE', ''])]
         elif filtro_atual == "AFASTADO":
             df_exibicao = df_exibicao[df_exibicao['Situação_Upper'].str.contains('AFASTAMENTO|AFASTADO')]
         
