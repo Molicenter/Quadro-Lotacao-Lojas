@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
-import requests
-import json
 from datetime import datetime, date
 import os
 import time
 import plotly.graph_objects as go
+from supabase import create_client, Client # <-- NOVA IMPORTAÇÃO
 
 # =========================================================
 # 🌐 RASTREAMENTO DE SESSÕES ATIVAS EM TEMPO REAL
@@ -25,7 +24,16 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# NOVO: Funções para gerar os "Badges" (Pílulas) de Status
+# --- INICIALIZAÇÃO DO SUPABASE ---
+@st.cache_resource
+def init_supabase() -> Client:
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
+
+supabase = init_supabase()
+
+# Funções para gerar os "Badges" (Pílulas) de Status
 def obter_badge_status(status):
     status_upper = str(status).strip().upper()
     if "ATIVO" in status_upper:
@@ -55,8 +63,6 @@ def formatar_data_br(valor):
         return dt.strftime("%d/%m/%Y")
     except:
         return val_str
-
-URL_API_SHEETS = "https://script.google.com/macros/s/AKfycbz_OA0O8zS-rMuuZEYu5rUeZow3lEZt-GcGYUWUbX4kiaRwDoQ9vZeoknsF5K-zFZvn/exec"
 
 # MATRIZ DE PERFIL E USUÁRIOS
 USUARIOS_DB = {
@@ -118,7 +124,6 @@ if "expander_global" not in st.session_state:
 if "chk_alterados" not in st.session_state:
     st.session_state["chk_alterados"] = False
 
-# NOVO: Filtro para os cards de status
 if "filtro_cards" not in st.session_state:
     st.session_state["filtro_cards"] = "TODOS"
 
@@ -222,7 +227,7 @@ if st.sidebar.button("🚪 Sair do Sistema"):
     st.rerun()
 
 # =========================================================
-# 📊 4. CARGA DE DADOS HÍBRIDA
+# 📊 4. CARGA DE DADOS HÍBRIDA (Excel local + Supabase)
 # =========================================================
 @st.cache_data(ttl="0d")
 def carregar_dados_completos():
@@ -243,74 +248,74 @@ def carregar_dados_completos():
     df['Possui_Alteracao_Sheets'] = False
 
     try:
-        response = requests.get(URL_API_SHEETS, timeout=10)
-        if response.status_code == 200:
-            dados_sheets = response.json()
-            mapeados = set()
+        # --- SUPABASE: Buscar Dados ---
+        resp = supabase.table("banco_ql").select("*").execute()
+        dados_sheets = resp.data
+        mapeados = set()
 
-            for registro in dados_sheets:
-                nome_func = registro.get('Nome')
-                try:
-                    loja_reg = int(float(str(registro.get('Loja', 0))))
-                except:
-                    loja_reg = 0
-                
-                idx_list = df[(df['Nome'] == nome_func) & (df['Loja'] == loja_reg)].index
-                if len(idx_list) > 0:
-                    idx = idx_list[0]
-                    sigla_sexo = str(registro.get('Sexo', '-')).strip()
-                    sexo_exibicao = MAPA_SIGLA_SEXO.get(sigla_sexo, sigla_sexo)
-                    if 'Situação' in registro and str(registro.get('Situação')).strip() not in ["", "-"]:
-                        df.at[idx, 'Situação'] = registro.get('Situação')
-                    df.at[idx, 'Observação'] = registro.get('Observação', '-')
-                    df.at[idx, 'Data Abertura'] = formatar_data_br(registro.get('Data Abertura', '-'))
-                    df.at[idx, 'Responsável'] = registro.get('Responsável', '-')
-                    df.at[idx, 'Horário Contrato'] = str(registro.get('Horário Contrato', '-'))
-                    df.at[idx, 'Sexo'] = sexo_exibicao
-                    df.at[idx, 'Motivo'] = registro.get('Motivo', '-')
-                    df.at[idx, 'Status RH'] = registro.get('Status RH', '-')
-                    df.at[idx, 'Candidato'] = registro.get('Candidato', '-')
-                    df.at[idx, 'Data Admissão'] = formatar_data_br(registro.get('Data Admissão', '-'))
-                    df.at[idx, 'Possui_Alteracao_Sheets'] = True
-                    mapeados.add((nome_func, loja_reg))
-
-            linhas_novas_manuais = []
-            for registro in dados_sheets:
-                nome_func = registro.get('Nome')
-                try:
-                    loja_reg = int(float(str(registro.get('Loja', 0))))
-                except:
-                    loja_reg = 0
-                
-                if (nome_func, loja_reg) not in mapeados:
-                    data_ad_checar = formatar_data_br(registro.get('Data Admissão', '-'))
-                    
-                    sigla_sexo = str(registro.get('Sexo', '-')).strip()
-                    sexo_exibicao = MAPA_SIGLA_SEXO.get(sigla_sexo, sigla_sexo)
-                    
-                    dept_final = registro.get('Dept') if registro.get('Dept') else 'HISTÓRICO / EX-COLABORADORES'
-                    funcao_final = registro.get('Funco') if registro.get('Funco') else (registro.get('Função') if registro.get('Função') else 'Sem Vínculo Atual')
-                    situacao_final = registro.get('Situaçao') if registro.get('Situaçao') else (registro.get('Situação') if registro.get('Situação') else 'Demitido')
-                    
-                    linha_manual = {
-                        'Loja': loja_reg, 'Nome': nome_func, 'Situação': situacao_final, 
-                        'Dept': dept_final, 'Função': funcao_final, 'Horario_Sistema_Real': '-',
-                        'Observação': registro.get('Observação', '-'),
-                        'Data Abertura': formatar_data_br(registro.get('Data Abertura', '-')),
-                        'Responsável': registro.get('Responsável', '-'),
-                        'Horário Contrato': str(registro.get('Horário Contrato', '-')),
-                        'Sexo': sexo_exibicao, 'Motivo': registro.get('Motivo', '-'),
-                        'Status RH': registro.get('Status RH', '-'),
-                        'Candidato': registro.get('Candidato', '-'),
-                        'Data Admissão': data_ad_checar, 'Possui_Alteracao_Sheets': True
-                    }
-                    linhas_novas_manuais.append(linha_manual)
+        for registro in dados_sheets:
+            nome_func = registro.get('Nome')
+            try:
+                loja_reg = int(float(str(registro.get('Loja', 0))))
+            except:
+                loja_reg = 0
             
-            if len(linhas_novas_manuais) > 0:
-                df_manuais = pd.DataFrame(linhas_novas_manuais)
-                df = pd.concat([df, df_manuais], ignore_index=True)
-    except:
-        pass
+            idx_list = df[(df['Nome'] == nome_func) & (df['Loja'] == loja_reg)].index
+            if len(idx_list) > 0:
+                idx = idx_list[0]
+                sigla_sexo = str(registro.get('Sexo', '-')).strip()
+                sexo_exibicao = MAPA_SIGLA_SEXO.get(sigla_sexo, sigla_sexo)
+                if 'Situação' in registro and str(registro.get('Situação')).strip() not in ["", "-"]:
+                    df.at[idx, 'Situação'] = registro.get('Situação')
+                df.at[idx, 'Observação'] = registro.get('Observação', '-')
+                df.at[idx, 'Data Abertura'] = formatar_data_br(registro.get('Data Abertura', '-'))
+                df.at[idx, 'Responsável'] = registro.get('Responsável', '-')
+                df.at[idx, 'Horário Contrato'] = str(registro.get('Horário Contrato', '-'))
+                df.at[idx, 'Sexo'] = sexo_exibicao
+                df.at[idx, 'Motivo'] = registro.get('Motivo', '-')
+                df.at[idx, 'Status RH'] = registro.get('Status RH', '-')
+                df.at[idx, 'Candidato'] = registro.get('Candidato', '-')
+                df.at[idx, 'Data Admissão'] = formatar_data_br(registro.get('Data Admissão', '-'))
+                df.at[idx, 'Possui_Alteracao_Sheets'] = True
+                mapeados.add((nome_func, loja_reg))
+
+        linhas_novas_manuais = []
+        for registro in dados_sheets:
+            nome_func = registro.get('Nome')
+            try:
+                loja_reg = int(float(str(registro.get('Loja', 0))))
+            except:
+                loja_reg = 0
+            
+            if (nome_func, loja_reg) not in mapeados:
+                data_ad_checar = formatar_data_br(registro.get('Data Admissão', '-'))
+                
+                sigla_sexo = str(registro.get('Sexo', '-')).strip()
+                sexo_exibicao = MAPA_SIGLA_SEXO.get(sigla_sexo, sigla_sexo)
+                
+                dept_final = registro.get('Dept') if registro.get('Dept') else 'HISTÓRICO / EX-COLABORADORES'
+                funcao_final = registro.get('Função') if registro.get('Função') else 'Sem Vínculo Atual'
+                situacao_final = registro.get('Situação') if registro.get('Situação') else 'Demitido'
+                
+                linha_manual = {
+                    'Loja': loja_reg, 'Nome': nome_func, 'Situação': situacao_final, 
+                    'Dept': dept_final, 'Função': funcao_final, 'Horario_Sistema_Real': '-',
+                    'Observação': registro.get('Observação', '-'),
+                    'Data Abertura': formatar_data_br(registro.get('Data Abertura', '-')),
+                    'Responsável': registro.get('Responsável', '-'),
+                    'Horário Contrato': str(registro.get('Horário Contrato', '-')),
+                    'Sexo': sexo_exibicao, 'Motivo': registro.get('Motivo', '-'),
+                    'Status RH': registro.get('Status RH', '-'),
+                    'Candidato': registro.get('Candidato', '-'),
+                    'Data Admissão': data_ad_checar, 'Possui_Alteracao_Sheets': True
+                }
+                linhas_novas_manuais.append(linha_manual)
+        
+        if len(linhas_novas_manuais) > 0:
+            df_manuais = pd.DataFrame(linhas_novas_manuais)
+            df = pd.concat([df, df_manuais], ignore_index=True)
+    except Exception as e:
+        print(f"Erro Supabase Fetch: {e}")
 
     return df
 
@@ -488,7 +493,7 @@ try:
             submit_button = st.form_submit_button("💾 Salvar Alterações", use_container_width=True, type="primary")
 
         # ==============================================================
-        # 🔒 VALIDAÇÃO DE CAMPOS (TRAVA DE SALVAMENTO PARA TODOS)
+        # 🔒 VALIDAÇÃO DE CAMPOS E SALVAMENTO NO SUPABASE
         # ==============================================================
         if submit_button:
             val_data = str(nova_data_abertura).strip()
@@ -512,29 +517,42 @@ try:
             elif len(campos_faltantes) > 0:
                 st.sidebar.error(f"⚠️ Atenção! Preencha os campos obrigatórios do Gerente: **{', '.join(campos_faltantes)}**")
             else:
-                with st.spinner("⏳ Processando e enviando para o Google Sheets (isso leva alguns segundos)..."):
+                with st.spinner("⏳ Gravando no banco de dados (Supabase)..."):
                     loja_salvamento = int(dados_func['Loja']) if (dados_func is not None) else (int(loja_selecionada) if isinstance(loja_selecionada, int) else 1)
                     
                     payload = {
-                        "Loja": loja_salvamento, "Nome": colaborador_final, "Dept": dept_final, "Funcao": funcao_final,
-                        "Situaçao": situacao_final, "Observacao": nova_obs, "DataAbertura": nova_data_abertura,
-                        "Responsavel": novo_responsavel, "HorarioContrato": str(novo_horario_contrato),
-                        "Sexo": novo_sexo, "Motivo": novo_motivo, "StatusRH": novo_status_rh,
-                        "Candidato": novo_candidato, "DataAdmissao": nova_data_admissao,
+                        "Loja": loja_salvamento, 
+                        "Nome": colaborador_final, 
+                        "Dept": dept_final, 
+                        "Função": funcao_final,
+                        "Situação": situacao_final, 
+                        "Observação": nova_obs, 
+                        "Data Abertura": nova_data_abertura,
+                        "Responsável": novo_responsavel, 
+                        "Horário Contrato": str(novo_horario_contrato),
+                        "Sexo": novo_sexo, 
+                        "Motivo": novo_motivo, 
+                        "Status RH": novo_status_rh,
+                        "Candidato": novo_candidato, 
+                        "Data Admissão": nova_data_admissao,
                         "Usuario": st.session_state["usuario"]
                     }
+                    
                     try:
-                        headers = {'Content-Type': 'application/json'}
-                        res = requests.post(URL_API_SHEETS, data=json.dumps(payload), headers=headers, timeout=10)
-                        if res.status_code == 200:
-                            st.sidebar.success("✅ Dados salvos com sucesso!")
-                            st.cache_data.clear()
-                            
-                            time.sleep(3.5)
-                            
-                            st.rerun()
-                        else:
-                            st.sidebar.error("Erro ao comunicar com a API do Sheets.")
+                        # 1. Apaga o registro anterior se existir (garante o UPSERT perfeito)
+                        supabase.table("banco_ql").delete().eq("Loja", loja_salvamento).eq("Nome", colaborador_final).execute()
+                        
+                        # 2. Insere a nova versão na tabela Banco
+                        supabase.table("banco_ql").insert(payload).execute()
+                        
+                        # 3. Insere a mesma versão na tabela de Histórico (Log)
+                        supabase.table("historico_ql").insert(payload).execute()
+                        
+                        st.sidebar.success("✅ Dados salvos com sucesso!")
+                        st.cache_data.clear()
+                        
+                        time.sleep(2)
+                        st.rerun()
                     except Exception as e:
                         st.sidebar.error(f"Erro de conexão: {e}")
 
@@ -552,7 +570,6 @@ try:
     afastados_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('AFASTAMENTO|AFASTADO')])
     alterados_qtd = len(df_loja[df_loja['Possui_Alteracao_Sheets'] == True])
 
-    # Lógica de clique: Atualiza o filtro e força os expansores a abrirem
     def aplicar_filtro_card(status):
         if st.session_state["filtro_cards"] == status:
             st.session_state["filtro_cards"] = "TODOS"
@@ -761,7 +778,7 @@ try:
     # Lógica combinada: Checkbox de alterados + Filtro dos Botões
     if apenas_alterados or st.session_state["filtro_cards"] == "ALTERADOS":
         df_exibicao = df_loja[df_loja['Possui_Alteracao_Sheets'] == True]
-        st.info("💡 Exibindo estritamente colaboradores com digitação salva no Google Sheets.")
+        st.info("💡 Exibindo estritamente colaboradores com digitação salva no Supabase.")
     else:
         df_exibicao = df_loja.copy()
 
