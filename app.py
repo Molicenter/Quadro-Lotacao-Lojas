@@ -68,7 +68,10 @@ def formatar_data_br(valor):
     try:
         if "T" in val_str:
             val_str = val_str.split("T")[0]
-        dt = pd.to_datetime(val_str)
+            
+        # O parâmetro dayfirst=True força o Pandas a ler o primeiro número como Dia (Padrão BR)
+        dt = pd.to_datetime(val_str, dayfirst=True)
+        
         return dt.strftime("%d/%m/%Y")
     except:
         return val_str
