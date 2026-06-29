@@ -276,11 +276,16 @@ def carregar_dados_completos():
             if len(idx_list) > 0:
                 idx = idx_list[0]
                 
-                # Tratamento explícito para Situação não herdar string 'nan'
-                sit_val = limpar_campo(registro.get('Situação'), "Demitido")
-                if sit_val == "-":
-                    sit_val = "Demitido"
-                df.at[idx, 'Situação'] = sit_val
+                # PRIORIDADE: 1º Excel -> 2º Supabase -> 3º Demitido
+                status_excel = str(df.at[idx, 'Situação']).strip()
+                
+                # Se o Excel estiver vazio ou inválido, puxa do Banco
+                if status_excel.lower() in ["nan", "none", "null", "", "-"]:
+                    sit_val = limpar_campo(registro.get('Situação'), "Demitido")
+                    if sit_val == "-":
+                        sit_val = "Demitido"
+                    df.at[idx, 'Situação'] = sit_val
+                # Se o Excel já tiver algo (ex: "Ativos"), ele ignora o banco e mantém o do Excel intacto.
                 
                 # Tratamento preventivo de strings textuais 'nan' nas colunas do banco
                 df.at[idx, 'Observação'] = limpar_campo(registro.get('Observação'))
