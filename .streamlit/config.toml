@@ -1,6 +1,18 @@
 [theme]
-primaryColor = "#ff4b4b"
-backgroundColor = "#0e1117"
-secondaryBackgroundColor = "#262730"
-textColor = "#fafafa"
+base = "light"
+primaryColor = "#E5007D"                        # magenta — botões primários (Salvar), radio, foco
+backgroundColor = "#FFFFFF"                      # área principal e células brancas
+secondaryBackgroundColor = "#F2F6FA"             # cinza-azulado — inputs, busca, zebra
+textColor = "#22303C"
+linkColor = "#0093E9"
+borderColor = "#D5E0EA"
+dataframeBorderColor = "#C4D4E0"
+dataframeHeaderBackgroundColor = "#DCEBF7"       # azul-claro: cabeçalho legível (texto escuro do tema)
 font = "sans serif"
+
+[theme.sidebar]
+backgroundColor = "#0B3D63"                       # sidebar azul institucional
+secondaryBackgroundColor = "#14507F"             # selectbox/inputs dentro da sidebar
+textColor = "#FFFFFF"
+primaryColor = "#4FC3F7"                          # radio selecionado em azul claro
+borderColor = "#2A6693"
