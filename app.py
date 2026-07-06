@@ -53,7 +53,7 @@ def obter_badge_status(status):
         return f'<span class="badge badge-afastado">{status}</span>'
     elif "DEMITIDO" in status_upper or status_upper in ["NAN", "NONE", ""]:
         return f'<span class="badge badge-demitido">Demitido</span>'
-    return f'<span class="badge" style="background-color:#475569; color:white;">{status}</span>'
+    return f'<span class="badge" style="background-color:#14507F; color:white;">{status}</span>'
 
 def obter_badge_rh(status):
     status_str = str(status).strip()
@@ -153,12 +153,12 @@ if not st.session_state["logado"]:
                 col_texto, col_logo = st.columns([0.8, 0.2], vertical_alignment="center")
                 with col_texto:
                     st.markdown("<h2 style='margin: 0; padding: 0; line-height: 1;'>Molicenter QL</h2>", unsafe_allow_html=True)
-                    st.markdown("<p style='color: #a0a0a0; font-size: 15px; margin: 0; padding-top: 4px;'>QL - Quadro de Lotação</p>", unsafe_allow_html=True)
+                    st.markdown("<p style='color: #64748B; font-size: 15px; margin: 0; padding-top: 4px;'>QL - Quadro de Lotação</p>", unsafe_allow_html=True)
                 with col_logo:
                     st.image("passaro_logo.png", width=90)
             else:
                 st.markdown("<h2 style='margin: 0; padding: 0; line-height: 1;'>Molicenter QL</h2>", unsafe_allow_html=True)
-                st.markdown("<p style='color: #a0a0a0; font-size: 15px; margin: 0; padding-top: 4px;'>QL - Quadro de Lotação</p>", unsafe_allow_html=True)
+                st.markdown("<p style='color: #64748B; font-size: 15px; margin: 0; padding-top: 4px;'>QL - Quadro de Lotação</p>", unsafe_allow_html=True)
             
             st.divider() 
             
@@ -209,25 +209,25 @@ st.markdown("""
 
     /* ESTILOS DE TABELA PRINCIPAL */
     .tabela-container { width: 100%; overflow-x: auto; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-    .ql-table { width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 12px; color: #ffffff; border: none !important; }
+    .ql-table { width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 12px; color: #22303C; border: none !important; }
     .ql-table th { padding: 8px 10px; font-size: 12px !important; font-weight: 600; }
-    .ql-table td { border-bottom: 1px solid #334155; border-left: none; border-right: none; padding: 10px 8px; text-align: left; white-space: nowrap; vertical-align: middle; }
-    .ql-table tr:nth-child(even) { background-color: #1e1e1e; }
-    .ql-table tr:nth-child(odd) { background-color: #121212; }
-    .ql-table tbody tr:hover { background-color: #334155 !important; transition: 0.2s; }
-    .celula-loja { text-align: center !important; font-weight: bold !important; color: #38bdf8 !important; }
+    .ql-table td { border-bottom: 1px solid #D5E0EA; border-left: none; border-right: none; padding: 10px 8px; text-align: left; white-space: nowrap; vertical-align: middle; }
+    .ql-table tr:nth-child(even) { background-color: #F2F6FA; }
+    .ql-table tr:nth-child(odd) { background-color: #FFFFFF; }
+    .ql-table tbody tr:hover { background-color: #DCEBF7 !important; transition: 0.2s; }
+    .celula-loja { text-align: center !important; font-weight: bold !important; color: #0B3D63 !important; }
     
     /* === ESTILOS EXCLUSIVOS DA TABELA DE RESUMO (RELATÓRIO) === */
-    .tabela-resumo { width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 13px; color: #ffffff; }
-    .tabela-resumo th { padding: 10px; background-color: #1e293b; border-bottom: 2px solid #475569; text-align: center !important; font-weight: 600; }
-    .tabela-resumo td { padding: 10px; border-bottom: 1px solid #334155; text-align: center !important; vertical-align: middle; }
-    .tabela-resumo tr:nth-child(even) { background-color: #1e1e1e; }
-    .tabela-resumo tr:nth-child(odd) { background-color: #121212; }
-    .tabela-resumo tbody tr:hover { background-color: #334155 !important; transition: 0.2s; }
+    .tabela-resumo { width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 13px; color: #22303C; }
+    .tabela-resumo th { padding: 10px; background-color: #DCEBF7; color: #22303C; border-bottom: 2px solid #C4D4E0; text-align: center !important; font-weight: 600; }
+    .tabela-resumo td { padding: 10px; border-bottom: 1px solid #D5E0EA; text-align: center !important; vertical-align: middle; }
+    .tabela-resumo tr:nth-child(even) { background-color: #F2F6FA; }
+    .tabela-resumo tr:nth-child(odd) { background-color: #FFFFFF; }
+    .tabela-resumo tbody tr:hover { background-color: #DCEBF7 !important; transition: 0.2s; }
     /* ================================================================ */
     
-    div[data-testid="stExpander"] { margin-bottom: 6px !important; border: 1px solid #334155 !important; border-radius: 6px !important; background-color: transparent !important; }
-    div[data-testid="stExpander"] summary { background-color: #1e293b !important; border-radius: 5px 5px 5px 5px !important; padding: 10px 15px !important; }
+    div[data-testid="stExpander"] { margin-bottom: 6px !important; border: 1px solid #D5E0EA !important; border-radius: 6px !important; background-color: transparent !important; }
+    div[data-testid="stExpander"] summary { background-color: #0B3D63 !important; border-radius: 5px 5px 5px 5px !important; padding: 10px 15px !important; }
     div[data-testid="stExpander"] summary p, div[data-testid="stExpander"] summary span, div[data-testid="stExpander"] summary label { color: #ffffff !important; font-weight: 600 !important; font-size: 13px !important; }
     div[data-testid="stExpander"] summary svg { color: #ffffff !important; fill: #ffffff !important; }
     div[data-testid="stExpander"] div[data-testid="stVerticalBlock"] { background-color: transparent !important; padding-top: 5px !important; }
@@ -374,9 +374,9 @@ try:
         usuarios_online = [user for user, ultima_atividade in sessoes_globais.items() if (agora_painel - ultima_atividade).total_seconds() < 600]
         st.markdown(
             f"""
-            <div style="background-color: #1e293b; padding: 12px; border-radius: 6px; border: 1px solid #334155; margin-bottom: 15px;">
-                <span style="color: #38bdf8; font-weight: bold;">🟢 Usuários online no Sistema (Últimos 10 min):</span>
-                <span style="color: #ffffff; margin-left: 8px;">{', '.join([f'<b>{u}</b>' for u in usuarios_online])}</span>
+            <div style="background-color: #DCEBF7; padding: 12px; border-radius: 6px; border: 1px solid #C4D4E0; margin-bottom: 15px;">
+                <span style="color: #0B3D63; font-weight: bold;">🟢 Usuários online no Sistema (Últimos 10 min):</span>
+                <span style="color: #22303C; margin-left: 8px;">{', '.join([f'<b>{u}</b>' for u in usuarios_online])}</span>
             </div>
             """, unsafe_allow_html=True)
 
@@ -729,21 +729,21 @@ try:
                 fig.add_trace(go.Bar(
                     x=lojas_x, y=abertas_y,
                     name='Abertas',
-                    marker_color='#64748b',
+                    marker_color='#90A4B8',
                     marker_line_width=0, 
                     text=abertas_y,
                     textposition='outside', 
-                    textfont=dict(color='#e2e8f0', size=13)
+                    textfont=dict(color='#22303C', size=13)
                 ))
 
                 fig.add_trace(go.Bar(
                     x=lojas_x, y=concluidas_y,
                     name='Concluídas',
-                    marker_color='#0ea5e9',
+                    marker_color='#0093E9',
                     marker_line_width=0,
                     text=concluidas_y,
                     textposition='outside',
-                    textfont=dict(color='#e2e8f0', size=13)
+                    textfont=dict(color='#22303C', size=13)
                 ))
 
                 teto_grafico = max(abertas_y) if abertas_y else 1
@@ -753,14 +753,14 @@ try:
                         y=max(abertas_y[i], concluidas_y[i]) + (teto_grafico * 0.15), 
                         text=f"<b>{perc_y[i]}%</b>",
                         showarrow=False,
-                        font=dict(color="#fbbf24" if perc_y[i] > 0 else "#475569", size=15) 
+                        font=dict(color="#E5007D" if perc_y[i] > 0 else "#90A4B8", size=15) 
                     )
 
                 fig.update_layout(
                     barmode='group',
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color='#e2e8f0', family="sans-serif"),
+                    font=dict(color='#22303C', family="sans-serif"),
                     legend=dict(
                         orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5,
                         font=dict(size=14)
@@ -768,15 +768,15 @@ try:
                     margin=dict(t=50, b=0, l=0, r=0),
                     yaxis=dict(
                         showgrid=True, 
-                        gridcolor='rgba(255,255,255,0.05)', 
+                        gridcolor='rgba(0,0,0,0.06)', 
                         showticklabels=False, 
                         zeroline=True,
-                        zerolinecolor='rgba(255,255,255,0.1)',
+                        zerolinecolor='rgba(0,0,0,0.1)',
                         range=[0, teto_grafico * 1.35] 
                     ),
                     xaxis=dict(
                         showgrid=False,
-                        tickfont=dict(size=13, color='#cbd5e1')
+                        tickfont=dict(size=13, color='#22303C')
                     ),
                     hovermode="x unified" 
                 )
@@ -797,7 +797,7 @@ try:
                         estilo_perc = "color: #ef4444; font-weight: bold; background-color: rgba(239, 68, 68, 0.1);"
                         
                     if loja_atual == "Total":
-                        estilo_linha = "background-color: #334155; font-weight: bold;"
+                        estilo_linha = "background-color: #DCEBF7; font-weight: bold;"
                     else:
                         estilo_linha = ""
                         
@@ -893,22 +893,22 @@ try:
 <table class="ql-table">
 <thead>
 <tr>
-<th colspan="{colspan_analista}" style="background-color: #334155; color: white; text-align: center; font-weight: 600; padding: 8px;">📊 DONO: ANALISTA</th>
-<th colspan="1" style="background-color: #d97706; color: white; text-align: center; font-weight: 600; padding: 8px;">📋 DONO: SUPERVISOR</th>
+<th colspan="{colspan_analista}" style="background-color: #0B3D63; color: white; text-align: center; font-weight: 600; padding: 8px;">📊 DONO: ANALISTA</th>
+<th colspan="1" style="background-color: #E5007D; color: white; text-align: center; font-weight: 600; padding: 8px;">📋 DONO: SUPERVISOR</th>
 <th colspan="5" style="background-color: #047857; color: white; text-align: center; font-weight: 600; padding: 8px;">🏪 DONO: GERENTE</th>
 <th colspan="3" style="background-color: #be123c; color: white; text-align: center; font-weight: 600; padding: 8px;">🤝 DONO: RH</th>
 </tr>
-<tr style="color: #e2e8f0; font-weight: 500;">
-<th style="background-color: #1e293b; border-bottom: 2px solid #475569; text-align: center; padding: 8px;">Status</th>
+<tr style="color: #22303C; font-weight: 500;">
+<th style="background-color: #DCEBF7; color: #22303C; border-bottom: 2px solid #C4D4E0; text-align: center; padding: 8px;">Status</th>
 """
                 
                 if modo_visao_global:
-                    html_tabela += '<th style="background-color: #1e293b; border-bottom: 2px solid #475569; text-align: center; padding: 8px;">Loja</th>\n'
+                    html_tabela += '<th style="background-color: #DCEBF7; color: #22303C; border-bottom: 2px solid #C4D4E0; text-align: center; padding: 8px;">Loja</th>\n'
                     
                 cabecalhos = ["Nome do Colaborador", "Horário Sistema", "Observação", "Data Abertura", "Responsável", "Horário Contrato", "Sexo", "Motivo", "Status RH", "Candidato", "Data Admissão"]
 
                 for cab in cabecalhos:
-                    html_tabela += f'<th style="background-color: #1e293b; border-bottom: 2px solid #475569; text-align: center; padding: 8px;">{cab}</th>\n'
+                    html_tabela += f'<th style="background-color: #DCEBF7; color: #22303C; border-bottom: 2px solid #C4D4E0; text-align: center; padding: 8px;">{cab}</th>\n'
                 
                 html_tabela += """
 </tr>
