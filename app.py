@@ -95,6 +95,10 @@ USUARIOS_DB = {
     "gerente30@molicenter.com.br": {"senha": "moli1234", "perfil": "gerente", "loja_fixa": 30},
 }
 
+# Perfis com edição TOTAL: podem alterar qualquer célula, salvar com campos em
+# branco e zerar/reabrir linhas. "analista" atua como Administrador do sistema.
+PERFIS_EDICAO_TOTAL = ["analista", "rh"]
+
 OPCOES_SEXO = ["-", "Indiferente", "Masculino", "Feminino"]
 MAPA_SEXO_SIGLA = {"-": "-", "Indiferente": "I", "Masculino": "M", "Feminino": "F"}
 MAPA_SIGLA_SEXO = {"-": "-", "I": "Indiferente", "M": "Masculino", "F": "Feminino"}
@@ -537,6 +541,53 @@ try:
             
             submit_button = st.form_submit_button("💾 Salvar Alterações", use_container_width=True, type="primary")
 
+            # 🧹 Ação exclusiva de Administrador (Analista) e RH:
+            # zera toda a digitação e devolve a linha ao estado "em aberto".
+            zerar_button = False
+            if perfil in PERFIS_EDICAO_TOTAL:
+                st.markdown(
+                    "<div style='font-size:11px; color:#64748B; margin-top:6px; line-height:1.3;'>"
+                    "Ação de administrador/RH: remove toda a digitação salva e reabre a linha "
+                    "(usar quando algo foi lançado errado)."
+                    "</div>", unsafe_allow_html=True
+                )
+                zerar_button = st.form_submit_button(
+                    "🧹 Zerar Linha / Deixar em Aberto", use_container_width=True
+                )
+
+        # ==============================================================
+        # 🧹 AÇÃO: ZERAR LINHA / DEIXAR EM ABERTO (Admin/Analista e RH)
+        # ==============================================================
+        if zerar_button:
+            if perfil not in PERFIS_EDICAO_TOTAL:
+                st.sidebar.error("Apenas Administrador/Analista e RH podem zerar registros.")
+            elif not colaborador_final:
+                st.sidebar.error("Selecione um colaborador para zerar a linha.")
+            else:
+                with st.spinner("⏳ Removendo digitação e reabrindo a linha..."):
+                    loja_salvamento = int(dados_func['Loja']) if (dados_func is not None) else (int(loja_selecionada) if isinstance(loja_selecionada, int) else 1)
+                    try:
+                        # Log de auditoria no histórico ANTES de remover
+                        log_zerar = {
+                            "Loja": loja_salvamento, "Nome": colaborador_final,
+                            "Dept": dept_final, "Função": funcao_final, "Situação": situacao_final,
+                            "Observação": f"[LINHA ZERADA / REABERTA por {st.session_state['usuario']}]",
+                            "Data Abertura": "-", "Responsável": "-", "Horário Contrato": "-",
+                            "Sexo": "-", "Motivo": "-", "Status RH": "-", "Candidato": "-",
+                            "Data Admissão": "-", "Usuario": st.session_state["usuario"]
+                        }
+                        supabase.table("historico_ql").insert(log_zerar).execute()
+
+                        # Remove o registro do banco principal -> a linha volta a ficar em aberto
+                        supabase.table("banco_ql").delete().eq("Loja", loja_salvamento).eq("Nome", colaborador_final).execute()
+
+                        st.sidebar.success("✅ Linha zerada! O registro voltou ao estado em aberto.")
+                        st.cache_data.clear()
+                        time.sleep(2)
+                        st.rerun()
+                    except Exception as e:
+                        st.sidebar.error(f"Erro ao zerar registro: {e}")
+
         # ==============================================================
         # 🔒 VALIDAÇÃO DE CAMPOS E SALVAMENTO NO SUPABASE
         # ==============================================================
@@ -557,11 +608,17 @@ try:
             
             campos_faltantes = [nome for nome, valor in campos_validacao_gerente.items() if valor in ["-", "", "None", "nan"]]
 
+            # Administrador/Analista e RH têm liberdade total: podem salvar com
+            # campos do Gerente em branco (ex.: para reabrir/limpar uma linha).
+            eh_perfil_total = perfil in PERFIS_EDICAO_TOTAL
+
             if tipo_registro == "Cadastrar Novo / Não Listado" and not colaborador_final:
                 st.sidebar.error("Erro: O nome do colaborador não pode ficar em branco.")
-            elif len(campos_faltantes) > 0:
+            elif len(campos_faltantes) > 0 and not eh_perfil_total:
                 st.sidebar.error(f"⚠️ Atenção! Preencha os campos obrigatórios do Gerente: **{', '.join(campos_faltantes)}**")
             else:
+                if len(campos_faltantes) > 0 and eh_perfil_total:
+                    st.sidebar.info(f"ℹ️ Salvando com campos do Gerente em branco: **{', '.join(campos_faltantes)}** (liberado para Admin/RH).")
                 with st.spinner("⏳ Gravando no banco de dados (Supabase)..."):
                     loja_salvamento = int(dados_func['Loja']) if (dados_func is not None) else (int(loja_selecionada) if isinstance(loja_selecionada, int) else 1)
                     
