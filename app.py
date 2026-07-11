@@ -547,8 +547,8 @@ try:
             if perfil in PERFIS_EDICAO_TOTAL:
                 st.markdown(
                     "<div style='font-size:11px; color:#64748B; margin-top:6px; line-height:1.3;'>"
-                    "Ação de administrador/RH: remove toda a digitação salva e reabre a linha "
-                    "(usar quando algo foi lançado errado)."
+                    ""
+                    ""
                     "</div>", unsafe_allow_html=True
                 )
                 zerar_button = st.form_submit_button(
