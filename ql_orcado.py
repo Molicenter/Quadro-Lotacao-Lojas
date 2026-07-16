@@ -19,6 +19,8 @@ Integração no app.py: ver instruções no final do arquivo.
 =====================================================================
 """
 
+import unicodedata
+
 import pandas as pd
 import streamlit as st
 
@@ -95,6 +97,102 @@ def _calcular_real(df_quadro):
     sit = df_quadro["Situação"].astype(str).str.upper()
     mask = sit.str.contains("ATIVO", na=False) | sit.str.contains("FÉRIAS|FERIAS", na=False)
     return int(mask.sum())
+
+
+# =====================================================================
+# 🔗 INTEGRAÇÃO COM OS EXPANDERS DE DEPARTAMENTO DO app.py
+# (mostra Orçado x Real no título de cada departamento/cargo)
+# =====================================================================
+def _normalizar(txt):
+    """Remove acentos, coloca em maiúsculas e normaliza espaços,
+    para casar nomes do quadro com nomes do orçado."""
+    txt = str(txt or "").strip().upper()
+    txt = unicodedata.normalize("NFKD", txt)
+    txt = "".join(ch for ch in txt if not unicodedata.combining(ch))
+    return " ".join(txt.split())
+
+
+# De-para: nome do departamento NO QUADRO -> destino NO ORÇADO.
+# Valor string  = departamento inteiro do orçado.
+# Valor tupla   = (departamento, função) específica do orçado
+#                 (para deptos do quadro que no orçado são só uma função).
+# ✏️ AJUSTE AQUI se surgir departamento novo sem correspondência.
+DE_PARA_DEPT = {
+    "FRENTE DE CAIXA": "FRENTE CAIXA",
+    "ENTREGA":         ("FRENTE CAIXA", "ENTREGADOR"),
+    "HORTIFRUTI":      "HORTFRUTI",
+    "GERENCIA":        "GERENCIA",
+    "LIMPEZA":         ("ADMINISTRATIVO", "LIMPEZA"),
+    "PREVENCAO":       ("ADMINISTRATIVO", "PREVENCAO"),
+    "CONTROLADORIA":   ("ADMINISTRATIVO", "CONTROLADORIA"),
+}
+
+
+@st.cache_data(ttl=300)
+def carregar_mapas_orcado(_supabase, loja_selecionada):
+    """Monta dicionários de consulta do orçado para a seleção atual:
+    {dept_normalizado: qtd} e {(dept_norm, funcao_norm): qtd}."""
+    df_orc, _ = carregar_ql_orcado(_supabase)
+    if df_orc.empty:
+        return {}, {}
+
+    if isinstance(loja_selecionada, int):
+        df_sel = df_orc[df_orc["loja"] == int(loja_selecionada)]
+    else:  # Total Lojas / Total Rede -> orçado cadastrado (lojas 01 a 08)
+        df_sel = df_orc[df_orc["loja"].isin(LOJAS_PADRAO)]
+
+    if df_sel.empty:
+        return {}, {}
+
+    df_sel = df_sel.copy()
+    df_sel["dept_n"] = df_sel["departamento"].map(_normalizar)
+    df_sel["func_n"] = df_sel["funcao"].map(_normalizar)
+
+    mapa_dept = df_sel.groupby("dept_n")["quantidade"].sum().to_dict()
+    mapa_func = df_sel.groupby(["dept_n", "func_n"])["quantidade"].sum().to_dict()
+    return mapa_dept, mapa_func
+
+
+def _resolver_dept(dept_quadro):
+    """Aplica o DE_PARA e devolve o destino normalizado (str ou tupla)."""
+    chave = _normalizar(dept_quadro)
+    destino = DE_PARA_DEPT.get(chave, chave)
+    if isinstance(destino, tuple):
+        return (_normalizar(destino[0]), _normalizar(destino[1]))
+    return _normalizar(destino)
+
+
+def obter_orcado_dept(mapa_dept, mapa_func, dept_quadro):
+    """Qtd orçada do departamento do quadro (ou None se não mapeado)."""
+    destino = _resolver_dept(dept_quadro)
+    if isinstance(destino, tuple):
+        return mapa_func.get(destino)
+    return mapa_dept.get(destino)
+
+
+def obter_orcado_funcao(mapa_func, dept_quadro, funcao_quadro):
+    """Qtd orçada de uma função do quadro (ou None se não mapeada)."""
+    destino = _resolver_dept(dept_quadro)
+    if isinstance(destino, tuple):
+        # Depto do quadro que corresponde a UMA função do orçado
+        return mapa_func.get(destino)
+    return mapa_func.get((destino, _normalizar(funcao_quadro)))
+
+
+def badge_orcado(orcado, real):
+    """Sufixo 'Orçado x Real x Vagas' para títulos de expander/cargo.
+    Retorna string vazia quando não há orçado mapeado."""
+    if orcado is None:
+        return ""
+    orcado, real = int(orcado), int(real)
+    saldo = orcado - real
+    if saldo > 0:
+        status = f"🟢 {saldo} vaga" + ("s" if saldo > 1 else "")
+    elif saldo == 0:
+        status = "⚪ completo"
+    else:
+        status = f"🔴 {abs(saldo)} acima"
+    return f" — 🎯 Orçado: {orcado} | Real: {real} | {status}"
 
 
 def _agregar(df_orc, df_par, lojas):
