@@ -9,7 +9,8 @@ e rodapé Total / Real / Diferença.
 
 - Visão por loja individual ou agregada (Total Lojas / Total Rede)
 - Valores orçados e parâmetros editáveis (perfis Admin/Analista e RH)
-- 'Real' é digitado manualmente (campo por loja), como na planilha
+- 'Real' é calculado automaticamente do quadro: Ativos + Férias
+  (mesma regra dos cards do topo do app)
 - Regra herdada do Excel: funções com conta_no_total = false
   (ex.: Aprendiz) não entram no Total geral
 
@@ -84,6 +85,16 @@ def _fmt_int(valor):
         return f"{int(valor)}"
     except (TypeError, ValueError):
         return "-"
+
+
+def _calcular_real(df_quadro):
+    """Real = colaboradores Ativos + Férias no quadro atual (mesma regra
+    dos cards do topo do app). Retorna None se o quadro não for informado."""
+    if df_quadro is None or df_quadro.empty or "Situação" not in df_quadro.columns:
+        return None
+    sit = df_quadro["Situação"].astype(str).str.upper()
+    mask = sit.str.contains("ATIVO", na=False) | sit.str.contains("FÉRIAS|FERIAS", na=False)
+    return int(mask.sum())
 
 
 def _agregar(df_orc, df_par, lojas):
@@ -212,14 +223,15 @@ def _montar_html(df_view, params, titulo):
     html += '<div class="org-rodape">'
     html += (f'<div class="org-big"><div class="k-lab">Total (Orçado)</div>'
              f'<div class="k-val">{total_geral}</div></div>')
-    html += (f'<div class="org-big"><div class="k-lab">Real</div>'
+    html += (f'<div class="org-big"><div class="k-lab">Real (Ativos + Férias)</div>'
              f'<div class="k-val">{_fmt_int(real)}</div></div>')
     html += (f'<div class="org-big"><div class="k-lab">Diferença</div>'
              f'<div class="k-val" style="background:{cor_dif_bg};color:{cor_dif_fg};">'
              f'{txt_dif}</div></div>')
     html += '</div>'
     html += ('<div class="org-nota">* Funções marcadas não entram no Total geral '
-             '(ex.: Aprendiz), seguindo o critério da planilha.</div>')
+             '(ex.: Aprendiz), seguindo o critério da planilha. '
+             'Real = Ativos + Férias do quadro atual.</div>')
     html += '</div>'
     return html
 
@@ -254,9 +266,8 @@ def _renderizar_edicao(supabase, df_orc, df_par, loja_edicao, usuario):
         nova_media = st.number_input(
             "Média 6 Meses (R$):", min_value=0.0, step=1000.0, format="%.2f",
             value=float(par.get("media_6_meses") or 0.0))
-        novo_real = st.number_input(
-            "Real (digitação manual):", min_value=0, step=1,
-            value=int(par.get("real_quadro") or 0))
+        st.caption("ℹ️ O valor **Real** é calculado automaticamente "
+                   "(Ativos + Férias do quadro) e não precisa ser digitado.")
     with c3:
         nova_venda_func = st.number_input(
             "Venda R$ / Funcionário:", min_value=0.0, step=500.0, format="%.2f",
@@ -312,7 +323,6 @@ def _renderizar_edicao(supabase, df_orc, df_par, loja_edicao, usuario):
                     "media_6_meses": float(nova_media),
                     "venda_por_funcionario": float(nova_venda_func),
                     "proposta_quant": int(nova_proposta),
-                    "real_quadro": int(novo_real),
                     **agora_por,
                 }, on_conflict="loja").execute()
 
@@ -326,7 +336,7 @@ def _renderizar_edicao(supabase, df_orc, df_par, loja_edicao, usuario):
 # =====================================================================
 # 🚪 FUNÇÃO PRINCIPAL (chamada pelo app.py)
 # =====================================================================
-def renderizar_visao_ql_orcado(supabase, loja_selecionada, pode_editar=False, usuario=""):
+def renderizar_visao_ql_orcado(supabase, loja_selecionada, pode_editar=False, usuario="", df_quadro=None):
     """
     Renderiza a visão QL Orçado (organograma).
 
@@ -335,6 +345,9 @@ def renderizar_visao_ql_orcado(supabase, loja_selecionada, pode_editar=False, us
         loja_selecionada  -> int (loja específica) ou "Total Lojas"/"Total Rede"
         pode_editar       -> True para perfis com edição (analista/rh)
         usuario           -> e-mail do usuário logado (auditoria)
+        df_quadro         -> DataFrame do quadro já filtrado pela seleção
+                             (df_loja do app.py); usado para calcular o Real
+                             automaticamente (Ativos + Férias)
     """
     try:
         df_orc, df_par = carregar_ql_orcado(supabase)
@@ -364,6 +377,12 @@ def renderizar_visao_ql_orcado(supabase, loja_selecionada, pode_editar=False, us
     if df_view.empty:
         st.info("Nenhum valor orçado cadastrado para esta seleção.")
         return
+
+    # Real calculado ao vivo do quadro (Ativos + Férias). Se o app não
+    # passar o df_quadro, mantém o valor gravado no banco como fallback.
+    real_calculado = _calcular_real(df_quadro)
+    if real_calculado is not None:
+        params["real_quadro"] = real_calculado
 
     st.markdown(_montar_html(df_view, params, titulo), unsafe_allow_html=True)
 
@@ -406,6 +425,7 @@ def renderizar_visao_ql_orcado(supabase, loja_selecionada, pode_editar=False, us
 #               loja_selecionada,
 #               pode_editar=(perfil in PERFIS_EDICAO_TOTAL),
 #               usuario=st.session_state["usuario"],
+#               df_quadro=df_loja,
 #           )
 #           st.markdown("---")
 #
