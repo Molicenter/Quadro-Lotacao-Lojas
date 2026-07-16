@@ -5,6 +5,7 @@ import os
 import time
 import plotly.graph_objects as go
 from supabase import create_client, Client # <-- NOVA IMPORTAÇÃO
+from ql_orcado import renderizar_visao_ql_orcado  # <-- VISÃO QL ORÇADO (ORGANOGRAMA)
 
 # =========================================================
 # 🌐 RASTREAMENTO DE SESSÕES ATIVAS EM TEMPO REAL
@@ -703,6 +704,8 @@ try:
     mostrar_relatorio = False
     if perfil in ["analista", "rh"]:
         mostrar_relatorio = st.checkbox("📊 Visualizar Relatório de Efetividade (Vagas Abertas vs Concluídas)", value=False)
+
+    mostrar_ql_orcado = st.checkbox("📐 Visualizar QL Orçado (Organograma de Funções)", value=False)
     
     def sync_expandir():
         if st.session_state["chk_alterados"]:
@@ -875,6 +878,18 @@ try:
                     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
         
         st.markdown("---") 
+
+    # =========================================================
+    # 📐 VISÃO QL ORÇADO (ORGANOGRAMA) - módulo ql_orcado.py
+    # =========================================================
+    if mostrar_ql_orcado:
+        renderizar_visao_ql_orcado(
+            supabase,
+            loja_selecionada,
+            pode_editar=(perfil in PERFIS_EDICAO_TOTAL),
+            usuario=st.session_state["usuario"],
+        )
+        st.markdown("---")
 
     # =========================================================================
     # Lógica combinada: Checkbox de alterados + Filtro dos Botões
