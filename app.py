@@ -5,7 +5,13 @@ import os
 import time
 import plotly.graph_objects as go
 from supabase import create_client, Client # <-- NOVA IMPORTAÇÃO
-from ql_orcado import renderizar_visao_ql_orcado  # <-- VISÃO QL ORÇADO (ORGANOGRAMA)
+from ql_orcado import (  # <-- VISÃO QL ORÇADO (ORGANOGRAMA)
+    renderizar_visao_ql_orcado,
+    carregar_mapas_orcado,
+    obter_orcado_dept,
+    obter_orcado_funcao,
+    badge_orcado,
+)
 
 # =========================================================
 # 🌐 RASTREAMENTO DE SESSÕES ATIVAS EM TEMPO REAL
@@ -914,6 +920,13 @@ try:
         
         st.warning(f"🔍 Tabela filtrada pelo status: **{filtro_atual}**. Clique no botão novamente para remover o filtro.")
 
+    # 🎯 Orçado x Real nos títulos dos departamentos/cargos
+    try:
+        mapa_orcado_dept, mapa_orcado_func = carregar_mapas_orcado(supabase, loja_selecionada)
+    except Exception:
+        mapa_orcado_dept, mapa_orcado_func = {}, {}
+    df_real_base = df_loja[df_loja['Situação_Upper'].str.contains('ATIVO|FÉRIAS|FERIAS', na=False)]
+
     departamentos = sorted(df_exibicao['Dept'].dropna().unique())
 
     if not departamentos:
@@ -928,8 +941,12 @@ try:
         
         total_funcionarios_dept = len(df_dept)
         expander_aberto = st.session_state["expander_global"]
-        
-        with st.expander(f"🏢 DEPARTAMENTO: {dept} ({total_funcionarios_dept})", expanded=expander_aberto):
+
+        real_dept = len(df_real_base[df_real_base['Dept'] == dept])
+        info_orcado_dept = badge_orcado(
+            obter_orcado_dept(mapa_orcado_dept, mapa_orcado_func, dept), real_dept)
+
+        with st.expander(f"🏢 DEPARTAMENTO: {dept} ({total_funcionarios_dept}){info_orcado_dept}", expanded=expander_aberto):
             funcoes = sorted(df_dept['Função'].dropna().unique())
             
             for funcao in funcoes:
@@ -939,7 +956,10 @@ try:
                     if colaborador_final not in df_funcao['Nome'].values:
                         continue
                 
-                st.markdown(f"**🔹 Cargo: {funcao}**")
+                real_func = len(df_real_base[(df_real_base['Dept'] == dept) & (df_real_base['Função'] == funcao)])
+                info_orcado_func = badge_orcado(
+                    obter_orcado_funcao(mapa_orcado_func, dept, funcao), real_func)
+                st.markdown(f"**🔹 Cargo: {funcao}**{info_orcado_func}")
                 
                 if modo_visao_global:
                     colunas_selecionadas = [
