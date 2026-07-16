@@ -888,6 +888,7 @@ try:
             loja_selecionada,
             pode_editar=(perfil in PERFIS_EDICAO_TOTAL),
             usuario=st.session_state["usuario"],
+            df_quadro=df_loja,
         )
         st.markdown("---")
 
