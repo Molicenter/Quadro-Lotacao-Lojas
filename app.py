@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import os
 import time
 import plotly.graph_objects as go
@@ -82,6 +82,28 @@ def formatar_data_br(valor):
         return dt.strftime("%d/%m/%Y")
     except:
         return val_str
+
+# =========================================================
+# 🎓 RETENÇÃO DE ADMISSÕES NO QUADRO OPERACIONAL
+# Depois de admitido, o lançamento continua no quadro por, no máximo,
+# DIAS_RETENCAO_ADMISSAO dias. Passado esse prazo ele sai do quadro do
+# dia a dia (sem ser apagado do banco): a admissão continua contando no
+# Relatório de Efetividade e no card "Admitidos".
+# =========================================================
+DIAS_RETENCAO_ADMISSAO = 7
+
+def _parse_data_admissao(valor):
+    """Converte a Data Admissão (texto DD/MM/AAAA) em date. Retorna None se vazia/inválida."""
+    val = str(valor).strip()
+    if val.lower() in ["", "-", "nan", "none", "null", "nat", "0"]:
+        return None
+    val = val.split("T")[0]
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(val, fmt).date()
+        except Exception:
+            continue
+    return None
 
 # MATRIZ DE PERFIL E USUÁRIOS
 USUARIOS_DB = {
@@ -269,6 +291,7 @@ def carregar_dados_completos():
         df[col] = "-"
         
     df['Possui_Alteracao_Sheets'] = False
+    df['Existe_No_Excel'] = True  # tudo que vem do Banco QL.xlsx existe no Excel
 
     try:
         # --- SUPABASE: Buscar Dados ---
@@ -347,7 +370,8 @@ def carregar_dados_completos():
                     'Sexo': sexo_exibicao, 'Motivo': limpar_campo(registro.get('Motivo')),
                     'Status RH': limpar_campo(registro.get('Status RH')),
                     'Candidato': limpar_campo(registro.get('Candidato')),
-                    'Data Admissão': data_ad_checar, 'Possui_Alteracao_Sheets': True
+                    'Data Admissão': data_ad_checar, 'Possui_Alteracao_Sheets': True,
+                    'Existe_No_Excel': False
                 }
                 linhas_novas_manuais.append(linha_manual)
         
@@ -356,6 +380,18 @@ def carregar_dados_completos():
             df = pd.concat([df, df_manuais], ignore_index=True)
     except Exception as e:
         print(f"Erro Supabase Fetch: {e}")
+
+    # --- Marcação de admitidos (não destrutiva) ---
+    # Tem_Admissao   -> alguém já foi admitido nessa linha (Data Admissão preenchida)
+    # Admitido_Arquivar -> admitido há mais de DIAS_RETENCAO_ADMISSAO dias
+    if 'Existe_No_Excel' not in df.columns:
+        df['Existe_No_Excel'] = True
+    limite_admissao = date.today() - timedelta(days=DIAS_RETENCAO_ADMISSAO)
+    datas_ad = df['Data Admissão'].apply(_parse_data_admissao)
+    df['Tem_Admissao'] = datas_ad.notna()
+    df['Admitido_Arquivar'] = datas_ad.apply(
+        lambda d: (d is not None) and (d <= limite_admissao)
+    )
 
     return df
 
@@ -678,6 +714,7 @@ try:
     demitidos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('DEMITIDO') | df_loja['Situação_Upper'].isin(['NAN', 'NONE', ''])])
     afastados_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('AFASTAMENTO|AFASTADO')])
     alterados_qtd = len(df_loja[df_loja['Possui_Alteracao_Sheets'] == True])
+    admitidos_qtd = len(df_loja[df_loja['Tem_Admissao'] == True]) if 'Tem_Admissao' in df_loja.columns else 0
 
     def aplicar_filtro_card(status):
         if st.session_state["filtro_cards"] == status:
@@ -687,7 +724,7 @@ try:
             st.session_state["expander_global"] = True
 
     st.markdown("<br>", unsafe_allow_html=True)
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
 
     with c1:
         st.button(f"🟢 {ativos_qtd} Ativos", on_click=aplicar_filtro_card, args=("ATIVO",), use_container_width=True)
@@ -699,6 +736,8 @@ try:
         st.button(f"🟠 {afastados_qtd} Afastados", on_click=aplicar_filtro_card, args=("AFASTADO",), use_container_width=True)
     with c5:
         st.button(f"🟣 {alterados_qtd} Alterados", on_click=aplicar_filtro_card, args=("ALTERADOS",), use_container_width=True)
+    with c6:
+        st.button(f"🎓 {admitidos_qtd} Admitidos", on_click=aplicar_filtro_card, args=("ADMITIDOS",), use_container_width=True)
 
     st.markdown("---")
     
@@ -899,16 +938,39 @@ try:
         st.markdown("---")
 
     # =========================================================================
-    # Lógica combinada: Checkbox de alterados + Filtro dos Botões
-    if apenas_alterados or st.session_state["filtro_cards"] == "ALTERADOS":
-        df_exibicao = df_loja[df_loja['Possui_Alteracao_Sheets'] == True]
+    # Lógica combinada: Quadro de Admitidos + Checkbox de alterados + Filtro dos Botões
+    if st.session_state["filtro_cards"] == "ADMITIDOS":
+        # 🎓 QUADRO DE ADMITIDOS: mostra todos que já foram admitidos, com os dados completos.
+        df_exibicao = df_loja[df_loja['Tem_Admissao'] == True].copy()
+        st.info(f"🎓 Exibindo o **Quadro de Admitidos** (colaboradores com Data de Admissão preenchida). "
+                f"No quadro operacional, esses lançamentos saem automaticamente após {DIAS_RETENCAO_ADMISSAO} dias.")
+    elif apenas_alterados or st.session_state["filtro_cards"] == "ALTERADOS":
+        df_exibicao = df_loja[df_loja['Possui_Alteracao_Sheets'] == True].copy()
         st.info("💡 Exibindo estritamente colaboradores com digitação salva no Supabase.")
     else:
+        # Quadro operacional do dia a dia: admissões antigas saem daqui.
+        # Os dados NÃO são apagados — continuam no Relatório de Efetividade e no card "Admitidos".
         df_exibicao = df_loja.copy()
+
+        # 1) Admitido há mais de X dias e SEM registro no Excel -> some do quadro
+        #    (permanece salvo no banco/histórico e visível no card Admitidos).
+        manuais_arquivar = (df_exibicao['Admitido_Arquivar'] == True) & (df_exibicao['Existe_No_Excel'] == False)
+        df_exibicao = df_exibicao[~manuais_arquivar]
+
+        # 2) Admitido há mais de X dias e COM registro no Excel -> nome continua no quadro,
+        #    mas as colunas de requisição são limpas (o lançamento "some", o colaborador fica).
+        excel_arquivar = df_exibicao['Admitido_Arquivar'] == True
+        colunas_requisicao = [
+            'Observação', 'Data Abertura', 'Responsável', 'Horário Contrato',
+            'Sexo', 'Motivo', 'Status RH', 'Candidato', 'Data Admissão'
+        ]
+        for c in colunas_requisicao:
+            df_exibicao.loc[excel_arquivar, c] = "-"
+        df_exibicao.loc[excel_arquivar, 'Possui_Alteracao_Sheets'] = False
 
     # Filtra o dataframe principal se algum botão de status for clicado
     filtro_atual = st.session_state["filtro_cards"]
-    if filtro_atual not in ["TODOS", "ALTERADOS"]:
+    if filtro_atual not in ["TODOS", "ALTERADOS", "ADMITIDOS"]:
         if filtro_atual == "ATIVO":
             df_exibicao = df_exibicao[df_exibicao['Situação_Upper'].str.contains('ATIVO')]
         elif filtro_atual == "FERIAS":
