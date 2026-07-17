@@ -105,6 +105,54 @@ def _parse_data_admissao(valor):
             continue
     return None
 
+def arquivar_admissoes_antigas(supabase):
+    """Move para historico_ql e REMOVE do banco_ql os lançamentos cuja Data Admissão
+    já passou de DIAS_RETENCAO_ADMISSAO dias. Assim o quadro operacional e o card
+    'Admitidos' ficam só com admissões recentes, e o banco_ql não cresce
+    indefinidamente. O histórico preserva tudo. Retorna a qtde arquivada."""
+    try:
+        resp = supabase.table("banco_ql").select("*").execute()
+        registros = resp.data or []
+    except Exception as e:
+        print(f"[Arquivamento] Erro ao ler banco_ql: {e}")
+        return 0
+
+    limite = date.today() - timedelta(days=DIAS_RETENCAO_ADMISSAO)
+    arquivados = 0
+    for registro in registros:
+        data_ad = _parse_data_admissao(registro.get("Data Admissão"))
+        # mantém: sem admissão, admissão recente (<= 7 dias) ou admissão futura (previsão)
+        if data_ad is None or data_ad >= limite:
+            continue
+        loja_reg = registro.get("Loja")
+        nome_reg = registro.get("Nome")
+        log = {
+            "Loja": loja_reg, "Nome": nome_reg,
+            "Dept": registro.get("Dept"), "Função": registro.get("Função"),
+            "Situação": registro.get("Situação"),
+            "Observação": (f"[ARQUIVADO AUTOMATICAMENTE - {DIAS_RETENCAO_ADMISSAO} dias "
+                           f"apos admissao em {data_ad.strftime('%d/%m/%Y')}]"),
+            "Data Abertura": registro.get("Data Abertura"),
+            "Responsável": registro.get("Responsável"),
+            "Horário Contrato": registro.get("Horário Contrato"),
+            "Sexo": registro.get("Sexo"), "Motivo": registro.get("Motivo"),
+            "Status RH": registro.get("Status RH"),
+            "Candidato": registro.get("Candidato"),
+            "Data Admissão": registro.get("Data Admissão"),
+            "Usuario": "SISTEMA_ARQUIVAMENTO",
+        }
+        try:
+            # 1º guarda no histórico, só então remove do banco principal
+            supabase.table("historico_ql").insert(log).execute()
+            supabase.table("banco_ql").delete().eq("Loja", loja_reg).eq("Nome", nome_reg).execute()
+            arquivados += 1
+        except Exception as e:
+            print(f"[Arquivamento] Erro em {nome_reg}/{loja_reg}: {e}")
+
+    if arquivados:
+        print(f"[Arquivamento] {arquivados} lançamento(s) movido(s) para historico_ql.")
+    return arquivados
+
 # MATRIZ DE PERFIL E USUÁRIOS
 USUARIOS_DB = {
     "analista@molicenter.com.br": {"senha": "moli0123", "perfil": "analista", "loja_fixa": None},
@@ -386,16 +434,29 @@ def carregar_dados_completos():
     # Admitido_Arquivar -> admitido há mais de DIAS_RETENCAO_ADMISSAO dias
     if 'Existe_No_Excel' not in df.columns:
         df['Existe_No_Excel'] = True
-    limite_admissao = date.today() - timedelta(days=DIAS_RETENCAO_ADMISSAO)
+    hoje_ref = date.today()
+    limite_admissao = hoje_ref - timedelta(days=DIAS_RETENCAO_ADMISSAO)
     datas_ad = df['Data Admissão'].apply(_parse_data_admissao)
     df['Tem_Admissao'] = datas_ad.notna()
+    # Arquivar: admitido há MAIS de DIAS_RETENCAO_ADMISSAO dias (sai do sistema)
     df['Admitido_Arquivar'] = datas_ad.apply(
-        lambda d: (d is not None) and (d <= limite_admissao)
+        lambda d: (d is not None) and (d < limite_admissao)
+    )
+    # Recente: admitido dentro dos últimos DIAS_RETENCAO_ADMISSAO dias (aparece no card)
+    df['Admitido_Recente'] = datas_ad.apply(
+        lambda d: (d is not None) and (limite_admissao <= d <= hoje_ref)
     )
 
     return df
 
 try:
+    # Arquivamento automático: admissões com +7 dias vão pro histórico e saem do banco_ql.
+    # Roda 1x por dia por sessão (após a 1ª execução do dia, não há mais o que arquivar).
+    if st.session_state.get("arquivamento_data") != date.today():
+        arquivar_admissoes_antigas(supabase)
+        st.session_state["arquivamento_data"] = date.today()
+        st.cache_data.clear()  # garante recarregar o quadro já sem os arquivados
+
     df_bruto = carregar_dados_completos()
 
     sessoes_globais = obter_rastreador_sessoes()
@@ -714,7 +775,7 @@ try:
     demitidos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('DEMITIDO') | df_loja['Situação_Upper'].isin(['NAN', 'NONE', ''])])
     afastados_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('AFASTAMENTO|AFASTADO')])
     alterados_qtd = len(df_loja[df_loja['Possui_Alteracao_Sheets'] == True])
-    admitidos_qtd = len(df_loja[df_loja['Tem_Admissao'] == True]) if 'Tem_Admissao' in df_loja.columns else 0
+    admitidos_qtd = len(df_loja[df_loja['Admitido_Recente'] == True]) if 'Admitido_Recente' in df_loja.columns else 0
 
     def aplicar_filtro_card(status):
         if st.session_state["filtro_cards"] == status:
@@ -940,10 +1001,10 @@ try:
     # =========================================================================
     # Lógica combinada: Quadro de Admitidos + Checkbox de alterados + Filtro dos Botões
     if st.session_state["filtro_cards"] == "ADMITIDOS":
-        # 🎓 QUADRO DE ADMITIDOS: mostra todos que já foram admitidos, com os dados completos.
-        df_exibicao = df_loja[df_loja['Tem_Admissao'] == True].copy()
-        st.info(f"🎓 Exibindo o **Quadro de Admitidos** (colaboradores com Data de Admissão preenchida). "
-                f"No quadro operacional, esses lançamentos saem automaticamente após {DIAS_RETENCAO_ADMISSAO} dias.")
+        # 🎓 QUADRO DE ADMITIDOS: só admissões dos últimos DIAS_RETENCAO_ADMISSAO dias.
+        df_exibicao = df_loja[df_loja['Admitido_Recente'] == True].copy()
+        st.info(f"🎓 **Quadro de Admitidos** — colaboradores admitidos nos últimos {DIAS_RETENCAO_ADMISSAO} dias. "
+                f"Depois desse prazo, o lançamento é arquivado no histórico (historico_ql) e sai do sistema.")
     elif apenas_alterados or st.session_state["filtro_cards"] == "ALTERADOS":
         df_exibicao = df_loja[df_loja['Possui_Alteracao_Sheets'] == True].copy()
         st.info("💡 Exibindo estritamente colaboradores com digitação salva no Supabase.")
