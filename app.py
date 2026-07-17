@@ -153,6 +153,51 @@ def arquivar_admissoes_antigas(supabase):
         print(f"[Arquivamento] {arquivados} lançamento(s) movido(s) para historico_ql.")
     return arquivados
 
+def combinar_banco_e_historico(supabase):
+    """Une banco_ql (registros vivos) + historico_ql (log/arquivados) e deduplica por
+    (Loja, Nome), mantendo a versão mais recente de cada requisição. Usado pelo
+    Relatório de Efetividade para contar aberturas/admissões inclusive as já arquivadas."""
+    try:
+        hist = (supabase.table("historico_ql").select("*").execute().data) or []
+    except Exception as e:
+        print(f"[Relatorio] Erro ao ler historico_ql: {e}")
+        hist = []
+    try:
+        banco = (supabase.table("banco_ql").select("*").execute().data) or []
+    except Exception as e:
+        print(f"[Relatorio] Erro ao ler banco_ql: {e}")
+        banco = []
+
+    # Descobre a coluna de ordem temporal disponível no histórico (pra pegar a versão mais nova)
+    campo_ordem = None
+    for cand in ("created_at", "criado_em", "id"):
+        if any(cand in r for r in hist):
+            campo_ordem = cand
+            break
+
+    def _ordem(r):
+        v = r.get(campo_ordem) if campo_ordem else None
+        if v is None:
+            return ""
+        s = str(v)
+        return s.zfill(20) if s.isdigit() else s  # id numérico ordena como número
+
+    hist_ordenado = sorted(hist, key=_ordem) if campo_ordem else hist
+
+    def _chave(r):
+        try:
+            loja = int(float(str(r.get('Loja', 0))))
+        except Exception:
+            loja = 0
+        return (loja, str(r.get('Nome', '')).strip().upper())
+
+    combinado = {}
+    for r in hist_ordenado:   # histórico do mais antigo -> mais novo
+        combinado[_chave(r)] = r
+    for r in banco:           # banco vivo prevalece sobre o histórico
+        combinado[_chave(r)] = r
+    return list(combinado.values())
+
 # MATRIZ DE PERFIL E USUÁRIOS
 USUARIOS_DB = {
     "analista@molicenter.com.br": {"senha": "moli0123", "perfil": "analista", "loja_fixa": None},
@@ -851,32 +896,58 @@ try:
             data_fim_filtro = st.date_input("Data Fim (Abertura):", value=hoje, format="DD/MM/YYYY")
 
         if data_fim_filtro:
-            df_analise = df_loja.copy()
-            df_analise['DataAbertura_DT'] = pd.to_datetime(df_analise['Data Abertura'], format='%d/%m/%Y', errors='coerce')
+            # Fonte combinada: banco oficial (banco_ql) + histórico (historico_ql),
+            # deduplicado por (Loja, Nome). Conta também aberturas/admissões já arquivadas.
+            registros_rel = combinar_banco_e_historico(supabase)
 
-            mascara_periodo = (df_analise['Possui_Alteracao_Sheets'] == True) & (
-                (df_analise['DataAbertura_DT'].dt.date <= data_fim_filtro) | (df_analise['DataAbertura_DT'].isna())
-            )
-            df_abertas_periodo = df_analise[mascara_periodo].copy()
+            # Escopo de lojas conforme a seleção do topo
+            if isinstance(loja_selecionada, int):
+                lojas_escopo = [loja_selecionada]
+            elif loja_selecionada == "Total Lojas":
+                lojas_escopo = [1, 2, 3, 4, 5, 6, 7, 8]
+            else:  # "Total Rede" -> todas as lojas > 0
+                lojas_escopo = None
 
-            if df_abertas_periodo.empty:
-                st.info("Nenhuma vaga com alteração ou abertura encontrada até a data limite para esta(s) loja(s).")
+            linhas_rel = []
+            for r in registros_rel:
+                try:
+                    loja = int(float(str(r.get('Loja', 0))))
+                except Exception:
+                    loja = 0
+                if loja <= 0:
+                    continue
+                if lojas_escopo is not None and loja not in lojas_escopo:
+                    continue
+                d_ab = _parse_data_admissao(r.get('Data Abertura'))
+                d_ad = _parse_data_admissao(r.get('Data Admissão'))
+                linhas_rel.append({
+                    'Loja': loja,
+                    # Aberta: Data Abertura dentro do período
+                    'is_aberta': (d_ab is not None) and (data_inicio_filtro <= d_ab <= data_fim_filtro),
+                    # Concluída: Data Admissão dentro do período
+                    'is_concluida': (d_ad is not None) and (data_inicio_filtro <= d_ad <= data_fim_filtro),
+                })
+
+            df_rel = pd.DataFrame(linhas_rel)
+
+            if df_rel.empty or (not df_rel['is_aberta'].any() and not df_rel['is_concluida'].any()):
+                st.info("Nenhuma abertura ou admissão encontrada no período selecionado para esta(s) loja(s).")
             else:
-                abertas_por_loja = df_abertas_periodo.groupby('Loja').size().reset_index(name='Abertas')
-                
-                def check_concluida(x):
-                    val = str(x).strip().lower()
-                    if val in ['-', '', 'nan', 'none', 'nat', '0', 'null']:
-                        return 0
-                    if len(val) >= 5:
-                        return 1
-                    return 0
-                    
-                df_abertas_periodo['Concluida'] = df_abertas_periodo['Data Admissão'].apply(check_concluida)
-                concluidas_por_loja = df_abertas_periodo.groupby('Loja')['Concluida'].sum().reset_index(name='Concluídas')
+                abertas_por_loja = (
+                    df_rel[df_rel['is_aberta']].groupby('Loja').size().reset_index(name='Abertas')
+                )
+                concluidas_por_loja = (
+                    df_rel[df_rel['is_concluida']].groupby('Loja').size().reset_index(name='Concluídas')
+                )
 
                 df_relatorio = pd.merge(abertas_por_loja, concluidas_por_loja, on='Loja', how='outer').fillna(0)
-                df_relatorio['%'] = (df_relatorio['Concluídas'] / df_relatorio['Abertas'] * 100).fillna(0).round(0).astype(int)
+                df_relatorio['Abertas'] = df_relatorio['Abertas'].astype(int)
+                df_relatorio['Concluídas'] = df_relatorio['Concluídas'].astype(int)
+                df_relatorio = df_relatorio.sort_values('Loja').reset_index(drop=True)
+                df_relatorio['%'] = df_relatorio.apply(
+                    lambda r: int(round(r['Concluídas'] / r['Abertas'] * 100)) if r['Abertas'] > 0 else 0,
+                    axis=1
+                )
 
                 total_abertas = df_relatorio['Abertas'].sum()
                 total_concluidas = df_relatorio['Concluídas'].sum()
