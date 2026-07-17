@@ -93,16 +93,23 @@ def formatar_data_br(valor):
 DIAS_RETENCAO_ADMISSAO = 7
 
 def _parse_data_admissao(valor):
-    """Converte a Data Admissão (texto DD/MM/AAAA) em date. Retorna None se vazia/inválida."""
+    """Converte uma data (texto DD/MM/AAAA, ISO, ou com hora) em date. None se vazia/inválida.
+    Usada tanto para Data Admissão quanto para Data Abertura no relatório."""
     val = str(valor).strip()
     if val.lower() in ["", "-", "nan", "none", "null", "nat", "0"]:
         return None
-    val = val.split("T")[0]
+    base = val.replace("T", " ").split(" ")[0]  # descarta a hora, se houver
     for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
         try:
-            return datetime.strptime(val, fmt).date()
+            return datetime.strptime(base, fmt).date()
         except Exception:
             continue
+    try:  # fallback robusto (dayfirst = padrão BR)
+        dt = pd.to_datetime(val, dayfirst=True, errors="coerce")
+        if pd.notna(dt):
+            return dt.date()
+    except Exception:
+        pass
     return None
 
 def arquivar_admissoes_antigas(supabase):
@@ -909,6 +916,7 @@ try:
                 lojas_escopo = None
 
             linhas_rel = []
+            datas_ad_invalidas = 0
             for r in registros_rel:
                 try:
                     loja = int(float(str(r.get('Loja', 0))))
@@ -918,17 +926,32 @@ try:
                     continue
                 if lojas_escopo is not None and loja not in lojas_escopo:
                     continue
+
                 d_ab = _parse_data_admissao(r.get('Data Abertura'))
-                d_ad = _parse_data_admissao(r.get('Data Admissão'))
+                raw_ad = r.get('Data Admissão')
+                d_ad = _parse_data_admissao(raw_ad)
+                if d_ad is None and str(raw_ad).strip().lower() not in ["", "-", "nan", "none", "null", "nat", "0"]:
+                    datas_ad_invalidas += 1
+
+                tem_admissao = d_ad is not None
+                # Admitido dentro do período (>= início e <= fim)
+                admitido_no_periodo = tem_admissao and (data_inicio_filtro <= d_ad <= data_fim_filtro)
+                # Vaga ainda em aberto (sem admissão) e aberta até a data fim
+                aberta_pendente = (not tem_admissao) and (d_ab is not None) and (d_ab <= data_fim_filtro)
+
                 linhas_rel.append({
                     'Loja': loja,
-                    # Aberta: Data Abertura dentro do período
-                    'is_aberta': (d_ab is not None) and (data_inicio_filtro <= d_ab <= data_fim_filtro),
-                    # Concluída: Data Admissão dentro do período
-                    'is_concluida': (d_ad is not None) and (data_inicio_filtro <= d_ad <= data_fim_filtro),
+                    # Abertas = admitidos no período  +  vagas ainda abertas (sem admissão) até a data fim
+                    'is_aberta': admitido_no_periodo or aberta_pendente,
+                    # Concluídas = admitidos no período
+                    'is_concluida': admitido_no_periodo,
                 })
 
             df_rel = pd.DataFrame(linhas_rel)
+
+            if datas_ad_invalidas:
+                st.caption(f"⚠️ {datas_ad_invalidas} registro(s) com Data de Admissão em formato não reconhecido "
+                           f"(ficaram de fora da contagem). Me envie um exemplo do valor para ajustar o parse.")
 
             if df_rel.empty or (not df_rel['is_aberta'].any() and not df_rel['is_concluida'].any()):
                 st.info("Nenhuma abertura ou admissão encontrada no período selecionado para esta(s) loja(s).")
