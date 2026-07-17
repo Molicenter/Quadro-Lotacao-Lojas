@@ -203,7 +203,7 @@ def combinar_banco_e_historico(supabase):
         combinado[_chave(r)] = r
     for r in banco:           # banco vivo prevalece sobre o histórico
         combinado[_chave(r)] = r
-    return list(combinado.values())
+    return list(combinado.values()), hist, banco
 
 # MATRIZ DE PERFIL E USUÁRIOS
 USUARIOS_DB = {
@@ -905,7 +905,7 @@ try:
         if data_fim_filtro:
             # Fonte combinada: banco oficial (banco_ql) + histórico (historico_ql),
             # deduplicado por (Loja, Nome). Conta também aberturas/admissões já arquivadas.
-            registros_rel = combinar_banco_e_historico(supabase)
+            registros_rel, _hist_bruto, _banco_bruto = combinar_banco_e_historico(supabase)
 
             # Escopo de lojas conforme a seleção do topo
             if isinstance(loja_selecionada, int):
@@ -915,16 +915,20 @@ try:
             else:  # "Total Rede" -> todas as lojas > 0
                 lojas_escopo = None
 
+            def _loja_int(r):
+                try:
+                    return int(float(str(r.get('Loja', 0))))
+                except Exception:
+                    return 0
+
+            def _no_escopo(loja):
+                return loja > 0 and (lojas_escopo is None or loja in lojas_escopo)
+
             linhas_rel = []
             datas_ad_invalidas = 0
             for r in registros_rel:
-                try:
-                    loja = int(float(str(r.get('Loja', 0))))
-                except Exception:
-                    loja = 0
-                if loja <= 0:
-                    continue
-                if lojas_escopo is not None and loja not in lojas_escopo:
+                loja = _loja_int(r)
+                if not _no_escopo(loja):
                     continue
 
                 d_ab = _parse_data_admissao(r.get('Data Abertura'))
@@ -934,20 +938,38 @@ try:
                     datas_ad_invalidas += 1
 
                 tem_admissao = d_ad is not None
-                # Admitido dentro do período (>= início e <= fim)
-                admitido_no_periodo = tem_admissao and (data_inicio_filtro <= d_ad <= data_fim_filtro)
-                # Vaga ainda em aberto (sem admissão) e aberta até a data fim
-                aberta_pendente = (not tem_admissao) and (d_ab is not None) and (d_ab <= data_fim_filtro)
+                # Concluída = admitida dentro do período (>= início e <= fim)
+                is_concluida = tem_admissao and (data_inicio_filtro <= d_ad <= data_fim_filtro)
+                # Aberta = estava aberta durante o período:
+                #   - foi aberta até a data fim, E
+                #   - não foi fechada (admitida) ANTES do início do período
+                #   (admissões futuras/depois do fim contam como aberta; admitidas em período anterior, não)
+                tem_requisicao = (d_ab is not None) or tem_admissao
+                aberta_ate_fim = tem_requisicao and ((d_ab is None) or (d_ab <= data_fim_filtro))
+                nao_fechada_antes = (not tem_admissao) or (d_ad >= data_inicio_filtro)
+                is_aberta = (aberta_ate_fim and nao_fechada_antes) or is_concluida
 
                 linhas_rel.append({
                     'Loja': loja,
-                    # Abertas = admitidos no período  +  vagas ainda abertas (sem admissão) até a data fim
-                    'is_aberta': admitido_no_periodo or aberta_pendente,
-                    # Concluídas = admitidos no período
-                    'is_concluida': admitido_no_periodo,
+                    'Nome': str(r.get('Nome', '')).title(),
+                    'Data Abertura': r.get('Data Abertura'),
+                    'Data Admissão': raw_ad,
+                    'is_aberta': is_aberta,
+                    'is_concluida': is_concluida,
                 })
 
             df_rel = pd.DataFrame(linhas_rel)
+
+            # Diagnóstico: distintos (Loja, Nome) admitidos no período olhando TODAS as linhas
+            # brutas (antes do dedup) — se for maior que o contado, o dedup está colapsando registros.
+            distintos_admitidos_bruto = set()
+            for r in list(_hist_bruto) + list(_banco_bruto):
+                loja = _loja_int(r)
+                if not _no_escopo(loja):
+                    continue
+                d_ad = _parse_data_admissao(r.get('Data Admissão'))
+                if d_ad is not None and (data_inicio_filtro <= d_ad <= data_fim_filtro):
+                    distintos_admitidos_bruto.add((loja, str(r.get('Nome', '')).strip().upper()))
 
             if datas_ad_invalidas:
                 st.caption(f"⚠️ {datas_ad_invalidas} registro(s) com Data de Admissão em formato não reconhecido "
@@ -1076,6 +1098,40 @@ try:
                     st.markdown(html_resumo, unsafe_allow_html=True)
                 with col_graf:
                     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+                # 🔍 Painel de diagnóstico (ajuda a reconciliar os números)
+                with st.expander("🔍 Diagnóstico da contagem (conferência)"):
+                    n_banco = len(_banco_bruto)
+                    n_hist = len(_hist_bruto)
+                    n_unicos = len(registros_rel)
+                    st.markdown(
+                        f"- Linhas lidas do **banco_ql**: `{n_banco}`  \n"
+                        f"- Linhas lidas do **historico_ql**: `{n_hist}`  \n"
+                        f"- Requisições **únicas** após deduplicar por (Loja, Nome): `{n_unicos}`"
+                    )
+                    n_conc_contadas = int(total_concluidas)
+                    n_conc_bruto = len(distintos_admitidos_bruto)
+                    if n_conc_bruto > n_conc_contadas:
+                        st.warning(
+                            f"Nas linhas brutas há **{n_conc_bruto}** pessoas distintas admitidas no período, "
+                            f"mas só **{n_conc_contadas}** entraram na contagem final "
+                            f"(diferença de **{n_conc_bruto - n_conc_contadas}**). "
+                            f"Isso indica que a deduplicação por (Loja, Nome) está unindo registros que deveriam "
+                            f"ser separados. Me avise que eu ajusto a chave de deduplicação."
+                        )
+                    else:
+                        st.success(
+                            f"As {n_conc_contadas} concluídas contadas batem com os distintos admitidos no período "
+                            f"({n_conc_bruto}). Se ainda estiver abaixo do real, provavelmente há admissões de junho "
+                            f"que não foram lançadas no banco_ql/historico_ql."
+                        )
+
+                    st.markdown("**Concluídas efetivamente contadas no período:**")
+                    df_conc = (
+                        df_rel[df_rel['is_concluida']][['Loja', 'Nome', 'Data Abertura', 'Data Admissão']]
+                        .sort_values(['Loja', 'Nome'])
+                    )
+                    st.dataframe(df_conc, use_container_width=True, hide_index=True)
         
         st.markdown("---") 
 
