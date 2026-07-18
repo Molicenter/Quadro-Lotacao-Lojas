@@ -960,30 +960,52 @@ try:
 
             df_rel = pd.DataFrame(linhas_rel)
 
-            # Diagnóstico: distintos (Loja, Nome) admitidos no período olhando TODAS as linhas
-            # brutas (antes do dedup) — se for maior que o contado, o dedup está colapsando registros.
-            distintos_admitidos_bruto = set()
+            # --- CONCLUÍDAS = Candidato DISTINTO admitido no período ---
+            # Olha TODAS as linhas brutas (banco_ql + historico_ql), SEM deduplicar por (Loja, Nome).
+            # Espelha a query validada COUNT(DISTINCT "Candidato"): uma mesma linha de vaga pode ter
+            # recebido várias admissões no período, e cada pessoa admitida deve contar.
+            candidatos_por_loja = {}          # loja -> set de candidatos distintos
+            conc_registros = {}               # (loja, candidato) -> linha p/ tabela de diagnóstico
+            admissoes_sem_candidato = set()   # admissões no período sem Candidato preenchido
             for r in list(_hist_bruto) + list(_banco_bruto):
                 loja = _loja_int(r)
                 if not _no_escopo(loja):
                     continue
                 d_ad = _parse_data_admissao(r.get('Data Admissão'))
-                if d_ad is not None and (data_inicio_filtro <= d_ad <= data_fim_filtro):
-                    distintos_admitidos_bruto.add((loja, str(r.get('Nome', '')).strip().upper()))
+                if d_ad is None or not (data_inicio_filtro <= d_ad <= data_fim_filtro):
+                    continue
+                cand = str(r.get('Candidato', '')).strip()
+                if cand.upper() in ['', '-', 'NAN', 'NONE', 'NULL', 'NAT']:
+                    admissoes_sem_candidato.add((loja, str(r.get('Nome', '')).strip().upper(), d_ad))
+                    continue  # igual ao COUNT(DISTINCT), que ignora vazios
+                chave = (loja, cand.upper())
+                candidatos_por_loja.setdefault(loja, set()).add(cand.upper())
+                if chave not in conc_registros:
+                    conc_registros[chave] = {
+                        'Loja': loja, 'Candidato': cand.title(),
+                        'Data Admissão': r.get('Data Admissão'),
+                        'Vaga (Nome)': str(r.get('Nome', '')).title(),
+                    }
+
+            df_conc_diag = pd.DataFrame(list(conc_registros.values()))
 
             if datas_ad_invalidas:
                 st.caption(f"⚠️ {datas_ad_invalidas} registro(s) com Data de Admissão em formato não reconhecido "
                            f"(ficaram de fora da contagem). Me envie um exemplo do valor para ajustar o parse.")
 
-            if df_rel.empty or (not df_rel['is_aberta'].any() and not df_rel['is_concluida'].any()):
+            tem_concluidas = any(len(s) > 0 for s in candidatos_por_loja.values())
+            if df_rel.empty or (not df_rel['is_aberta'].any() and not tem_concluidas):
                 st.info("Nenhuma abertura ou admissão encontrada no período selecionado para esta(s) loja(s).")
             else:
                 abertas_por_loja = (
                     df_rel[df_rel['is_aberta']].groupby('Loja').size().reset_index(name='Abertas')
                 )
-                concluidas_por_loja = (
-                    df_rel[df_rel['is_concluida']].groupby('Loja').size().reset_index(name='Concluídas')
-                )
+                if candidatos_por_loja:
+                    concluidas_por_loja = pd.DataFrame(
+                        [{'Loja': loja, 'Concluídas': len(s)} for loja, s in candidatos_por_loja.items()]
+                    )
+                else:
+                    concluidas_por_loja = pd.DataFrame(columns=['Loja', 'Concluídas'])
 
                 df_relatorio = pd.merge(abertas_por_loja, concluidas_por_loja, on='Loja', how='outer').fillna(0)
                 df_relatorio['Abertas'] = df_relatorio['Abertas'].astype(int)
@@ -1103,34 +1125,30 @@ try:
                 with st.expander("🔍 Diagnóstico da contagem (conferência)"):
                     n_banco = len(_banco_bruto)
                     n_hist = len(_hist_bruto)
-                    n_unicos = len(registros_rel)
+                    n_conc_contadas = int(total_concluidas)
+                    n_sem_cand = len(admissoes_sem_candidato)
                     st.markdown(
                         f"- Linhas lidas do **banco_ql**: `{n_banco}`  \n"
                         f"- Linhas lidas do **historico_ql**: `{n_hist}`  \n"
-                        f"- Requisições **únicas** após deduplicar por (Loja, Nome): `{n_unicos}`"
+                        f"- **Concluídas** = Candidato distinto admitido no período: `{n_conc_contadas}`  \n"
+                        f"(mesma lógica do `COUNT(DISTINCT \"Candidato\")` que você validou no Supabase)"
                     )
-                    n_conc_contadas = int(total_concluidas)
-                    n_conc_bruto = len(distintos_admitidos_bruto)
-                    if n_conc_bruto > n_conc_contadas:
+                    if n_sem_cand:
                         st.warning(
-                            f"Nas linhas brutas há **{n_conc_bruto}** pessoas distintas admitidas no período, "
-                            f"mas só **{n_conc_contadas}** entraram na contagem final "
-                            f"(diferença de **{n_conc_bruto - n_conc_contadas}**). "
-                            f"Isso indica que a deduplicação por (Loja, Nome) está unindo registros que deveriam "
-                            f"ser separados. Me avise que eu ajusto a chave de deduplicação."
+                            f"Há **{n_sem_cand}** admissão(ões) no período **sem Candidato preenchido** — "
+                            f"não entram na contagem (igual ao COUNT DISTINCT). Se quiser, dá pra contar essas "
+                            f"pela vaga (Nome) também."
                         )
-                    else:
-                        st.success(
-                            f"As {n_conc_contadas} concluídas contadas batem com os distintos admitidos no período "
-                            f"({n_conc_bruto}). Se ainda estiver abaixo do real, provavelmente há admissões de junho "
-                            f"que não foram lançadas no banco_ql/historico_ql."
-                        )
+                    st.caption(
+                        "Se ainda ficar abaixo do real, a diferença que sobra são admissões que existem no "
+                        "Senior mas nunca foram lançadas no QL."
+                    )
 
                     st.markdown("**Concluídas efetivamente contadas no período:**")
-                    df_conc = (
-                        df_rel[df_rel['is_concluida']][['Loja', 'Nome', 'Data Abertura', 'Data Admissão']]
-                        .sort_values(['Loja', 'Nome'])
-                    )
+                    if not df_conc_diag.empty:
+                        df_conc = df_conc_diag[['Loja', 'Candidato', 'Data Admissão', 'Vaga (Nome)']].sort_values(['Loja', 'Candidato'])
+                    else:
+                        df_conc = df_conc_diag
                     st.dataframe(df_conc, use_container_width=True, hide_index=True)
         
         st.markdown("---") 
