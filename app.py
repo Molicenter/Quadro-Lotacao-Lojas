@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, date, timedelta
 import os
 import time
+import unicodedata
 import plotly.graph_objects as go
 from supabase import create_client, Client # <-- NOVA IMPORTAÇÃO
 from ql_orcado import (  # <-- VISÃO QL ORÇADO (ORGANOGRAMA)
@@ -93,8 +94,12 @@ def formatar_data_br(valor):
 DIAS_RETENCAO_ADMISSAO = 7
 
 def _parse_data_admissao(valor):
-    """Converte uma data (texto DD/MM/AAAA, ISO, ou com hora) em date. None se vazia/inválida.
-    Usada tanto para Data Admissão quanto para Data Abertura no relatório."""
+    """Converte uma data (texto DD/MM/AAAA, ISO, com hora, ou datetime/Timestamp do Excel)
+    em date. None se vazia/inválida. Usada para Data Admissão e Data Abertura no relatório."""
+    if isinstance(valor, (datetime, pd.Timestamp)):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
     val = str(valor).strip()
     if val.lower() in ["", "-", "nan", "none", "null", "nat", "0"]:
         return None
@@ -111,6 +116,13 @@ def _parse_data_admissao(valor):
     except Exception:
         pass
     return None
+
+def _norm_nome(s):
+    """Normaliza nome para comparação: sem acento, maiúsculo, espaços colapsados.
+    Faz 'Lucas Custódio  da Silva' == 'LUCAS CUSTODIO DA SILVA'."""
+    s = str(s or "").strip().upper()
+    s = "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))
+    return " ".join(s.split())
 
 def arquivar_admissoes_antigas(supabase):
     """Move para historico_ql e REMOVE do banco_ql os lançamentos cuja Data Admissão
@@ -960,13 +972,30 @@ try:
 
             df_rel = pd.DataFrame(linhas_rel)
 
-            # --- CONCLUÍDAS = Candidato DISTINTO admitido no período ---
-            # Olha TODAS as linhas brutas (banco_ql + historico_ql), SEM deduplicar por (Loja, Nome).
-            # Espelha a query validada COUNT(DISTINCT "Candidato"): uma mesma linha de vaga pode ter
-            # recebido várias admissões no período, e cada pessoa admitida deve contar.
-            candidatos_por_loja = {}          # loja -> set de candidatos distintos
-            conc_registros = {}               # (loja, candidato) -> linha p/ tabela de diagnóstico
-            admissoes_sem_candidato = set()   # admissões no período sem Candidato preenchido
+            # --- CONCLUÍDAS = pessoas DISTINTAS admitidas no período ---
+            # União de DUAS fontes, deduplicada por nome (sem acento / maiúsculo / espaços):
+            #   1) Candidato dos lançamentos do QL (banco_ql + historico_ql)
+            #   2) Nome do roster Banco QL.xlsx (coluna "Admissão") — pega quem foi admitido
+            #      no Senior mas nunca virou lançamento no QL.
+            pessoas_por_loja = {}             # loja -> set de nomes normalizados
+            conc_registros = {}               # (loja, nome_norm) -> linha p/ tabela de diagnóstico
+            admissoes_sem_candidato = set()   # admissões do QL no período sem Candidato preenchido
+
+            def _add_pessoa(loja, nome_exibicao, data_ad, fonte, vaga=''):
+                nome_norm = _norm_nome(nome_exibicao)
+                if not nome_norm:
+                    return False
+                ja_tinha = nome_norm in pessoas_por_loja.get(loja, set())
+                pessoas_por_loja.setdefault(loja, set()).add(nome_norm)
+                chave = (loja, nome_norm)
+                if chave not in conc_registros:
+                    conc_registros[chave] = {
+                        'Loja': loja, 'Nome Admitido': str(nome_exibicao).title(),
+                        'Data Admissão': data_ad.strftime('%d/%m/%Y'), 'Fonte': fonte,
+                    }
+                return not ja_tinha
+
+            # Fonte 1: QL (Candidato de banco_ql + historico_ql)
             for r in list(_hist_bruto) + list(_banco_bruto):
                 loja = _loja_int(r)
                 if not _no_escopo(loja):
@@ -977,15 +1006,26 @@ try:
                 cand = str(r.get('Candidato', '')).strip()
                 if cand.upper() in ['', '-', 'NAN', 'NONE', 'NULL', 'NAT']:
                     admissoes_sem_candidato.add((loja, str(r.get('Nome', '')).strip().upper(), d_ad))
-                    continue  # igual ao COUNT(DISTINCT), que ignora vazios
-                chave = (loja, cand.upper())
-                candidatos_por_loja.setdefault(loja, set()).add(cand.upper())
-                if chave not in conc_registros:
-                    conc_registros[chave] = {
-                        'Loja': loja, 'Candidato': cand.title(),
-                        'Data Admissão': r.get('Data Admissão'),
-                        'Vaga (Nome)': str(r.get('Nome', '')).title(),
-                    }
+                    continue  # sem candidato -> a fonte Excel provavelmente cobre essa pessoa
+                _add_pessoa(loja, cand, d_ad, 'QL')
+
+            # Fonte 2: Banco QL.xlsx (coluna Admissão do roster importado do Senior)
+            col_adm_excel = None
+            for c in df_bruto.columns:
+                if _norm_nome(c) == 'ADMISSAO':
+                    col_adm_excel = c
+                    break
+            n_excel_novos = 0
+            if col_adm_excel is not None:
+                for _, linha in df_bruto.iterrows():
+                    loja = _loja_int(linha)
+                    if not _no_escopo(loja):
+                        continue
+                    d_ad = _parse_data_admissao(linha.get(col_adm_excel))
+                    if d_ad is None or not (data_inicio_filtro <= d_ad <= data_fim_filtro):
+                        continue
+                    if _add_pessoa(loja, linha.get('Nome', ''), d_ad, 'Banco QL.xlsx'):
+                        n_excel_novos += 1
 
             df_conc_diag = pd.DataFrame(list(conc_registros.values()))
 
@@ -993,16 +1033,16 @@ try:
                 st.caption(f"⚠️ {datas_ad_invalidas} registro(s) com Data de Admissão em formato não reconhecido "
                            f"(ficaram de fora da contagem). Me envie um exemplo do valor para ajustar o parse.")
 
-            tem_concluidas = any(len(s) > 0 for s in candidatos_por_loja.values())
+            tem_concluidas = any(len(s) > 0 for s in pessoas_por_loja.values())
             if df_rel.empty or (not df_rel['is_aberta'].any() and not tem_concluidas):
                 st.info("Nenhuma abertura ou admissão encontrada no período selecionado para esta(s) loja(s).")
             else:
                 abertas_por_loja = (
                     df_rel[df_rel['is_aberta']].groupby('Loja').size().reset_index(name='Abertas')
                 )
-                if candidatos_por_loja:
+                if pessoas_por_loja:
                     concluidas_por_loja = pd.DataFrame(
-                        [{'Loja': loja, 'Concluídas': len(s)} for loja, s in candidatos_por_loja.items()]
+                        [{'Loja': loja, 'Concluídas': len(s)} for loja, s in pessoas_por_loja.items()]
                     )
                 else:
                     concluidas_por_loja = pd.DataFrame(columns=['Loja', 'Concluídas'])
@@ -1130,23 +1170,23 @@ try:
                     st.markdown(
                         f"- Linhas lidas do **banco_ql**: `{n_banco}`  \n"
                         f"- Linhas lidas do **historico_ql**: `{n_hist}`  \n"
-                        f"- **Concluídas** = Candidato distinto admitido no período: `{n_conc_contadas}`  \n"
-                        f"(mesma lógica do `COUNT(DISTINCT \"Candidato\")` que você validou no Supabase)"
+                        f"- Admitidos que vieram **a mais** do `Banco QL.xlsx` (não estavam no QL): `{n_excel_novos}`  \n"
+                        f"- **Concluídas** = pessoas distintas admitidas no período (QL + Banco QL.xlsx, sem duplicar): `{n_conc_contadas}`"
                     )
-                    if n_sem_cand:
+                    if col_adm_excel is None:
                         st.warning(
-                            f"Há **{n_sem_cand}** admissão(ões) no período **sem Candidato preenchido** — "
-                            f"não entram na contagem (igual ao COUNT DISTINCT). Se quiser, dá pra contar essas "
-                            f"pela vaga (Nome) também."
+                            "Não encontrei a coluna **Admissão** no `Banco QL.xlsx` — a 2ª fonte não entrou. "
+                            "Me diga o nome exato da coluna que eu ajusto."
                         )
-                    st.caption(
-                        "Se ainda ficar abaixo do real, a diferença que sobra são admissões que existem no "
-                        "Senior mas nunca foram lançadas no QL."
-                    )
+                    if n_sem_cand:
+                        st.caption(
+                            f"({n_sem_cand} admissão(ões) do QL no período estavam sem Candidato preenchido; "
+                            f"quando a pessoa também está no Banco QL.xlsx, ela é contada por lá.)"
+                        )
 
-                    st.markdown("**Concluídas efetivamente contadas no período:**")
+                    st.markdown("**Pessoas contadas como admitidas no período:**")
                     if not df_conc_diag.empty:
-                        df_conc = df_conc_diag[['Loja', 'Candidato', 'Data Admissão', 'Vaga (Nome)']].sort_values(['Loja', 'Candidato'])
+                        df_conc = df_conc_diag[['Loja', 'Nome Admitido', 'Data Admissão', 'Fonte']].sort_values(['Loja', 'Nome Admitido'])
                     else:
                         df_conc = df_conc_diag
                     st.dataframe(df_conc, use_container_width=True, hide_index=True)
