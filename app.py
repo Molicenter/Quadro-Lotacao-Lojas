@@ -172,20 +172,30 @@ def arquivar_admissoes_antigas(supabase):
         print(f"[Arquivamento] {arquivados} lançamento(s) movido(s) para historico_ql.")
     return arquivados
 
+def _ler_tabela_completa(supabase, tabela):
+    """Lê TODAS as linhas de uma tabela do Supabase, paginando de 1000 em 1000
+    (o Supabase limita cada requisição a 1000 linhas por padrão)."""
+    todas = []
+    passo = 1000
+    inicio = 0
+    while True:
+        try:
+            lote = supabase.table(tabela).select("*").range(inicio, inicio + passo - 1).execute().data or []
+        except Exception as e:
+            print(f"[Leitura] Erro ao ler {tabela} (range {inicio}): {e}")
+            break
+        todas.extend(lote)
+        if len(lote) < passo:
+            break
+        inicio += passo
+    return todas
+
 def combinar_banco_e_historico(supabase):
     """Une banco_ql (registros vivos) + historico_ql (log/arquivados) e deduplica por
     (Loja, Nome), mantendo a versão mais recente de cada requisição. Usado pelo
     Relatório de Efetividade para contar aberturas/admissões inclusive as já arquivadas."""
-    try:
-        hist = (supabase.table("historico_ql").select("*").execute().data) or []
-    except Exception as e:
-        print(f"[Relatorio] Erro ao ler historico_ql: {e}")
-        hist = []
-    try:
-        banco = (supabase.table("banco_ql").select("*").execute().data) or []
-    except Exception as e:
-        print(f"[Relatorio] Erro ao ler banco_ql: {e}")
-        banco = []
+    hist = _ler_tabela_completa(supabase, "historico_ql")
+    banco = _ler_tabela_completa(supabase, "banco_ql")
 
     # Descobre a coluna de ordem temporal disponível no histórico (pra pegar a versão mais nova)
     campo_ordem = None
@@ -972,30 +982,41 @@ try:
 
             df_rel = pd.DataFrame(linhas_rel)
 
-            # --- CONCLUÍDAS = pessoas DISTINTAS admitidas no período ---
-            # União de DUAS fontes, deduplicada por nome (sem acento / maiúsculo / espaços):
-            #   1) Candidato dos lançamentos do QL (banco_ql + historico_ql)
-            #   2) Nome do roster Banco QL.xlsx (coluna "Admissão") — pega quem foi admitido
-            #      no Senior mas nunca virou lançamento no QL.
-            pessoas_por_loja = {}             # loja -> set de nomes normalizados
+            # --- CONCLUÍDAS = pessoas DISTINTAS admitidas no período, pelo ROSTER DO SENIOR ---
+            # Fonte oficial = Banco QL.xlsx (coluna "Admissão"). O campo Candidato do QL é digitado
+            # manualmente e contém admissões que NÃO existem no Senior (ex.: Cristiano Afonso), então
+            # ele NÃO é mais usado para contar — só para auditoria (mostra os "extras" no diagnóstico).
+            pessoas_por_loja = {}             # loja -> set de nomes normalizados (roster Senior)
             conc_registros = {}               # (loja, nome_norm) -> linha p/ tabela de diagnóstico
-            admissoes_sem_candidato = set()   # admissões do QL no período sem Candidato preenchido
 
-            def _add_pessoa(loja, nome_exibicao, data_ad, fonte, vaga=''):
-                nome_norm = _norm_nome(nome_exibicao)
-                if not nome_norm:
-                    return False
-                ja_tinha = nome_norm in pessoas_por_loja.get(loja, set())
-                pessoas_por_loja.setdefault(loja, set()).add(nome_norm)
-                chave = (loja, nome_norm)
-                if chave not in conc_registros:
-                    conc_registros[chave] = {
-                        'Loja': loja, 'Nome Admitido': str(nome_exibicao).title(),
-                        'Data Admissão': data_ad.strftime('%d/%m/%Y'), 'Fonte': fonte,
-                    }
-                return not ja_tinha
+            # Fonte oficial: Banco QL.xlsx (coluna Admissão do roster importado do Senior)
+            col_adm_excel = None
+            for c in df_bruto.columns:
+                if _norm_nome(c) == 'ADMISSAO':
+                    col_adm_excel = c
+                    break
+            if col_adm_excel is not None:
+                for _, linha in df_bruto.iterrows():
+                    loja = _loja_int(linha)
+                    if not _no_escopo(loja):
+                        continue
+                    d_ad = _parse_data_admissao(linha.get(col_adm_excel))
+                    if d_ad is None or not (data_inicio_filtro <= d_ad <= data_fim_filtro):
+                        continue
+                    nome_norm = _norm_nome(linha.get('Nome', ''))
+                    if not nome_norm:
+                        continue
+                    pessoas_por_loja.setdefault(loja, set()).add(nome_norm)
+                    chave = (loja, nome_norm)
+                    if chave not in conc_registros:
+                        conc_registros[chave] = {
+                            'Loja': loja, 'Nome Admitido': str(linha.get('Nome', '')).title(),
+                            'Data Admissão': d_ad.strftime('%d/%m/%Y'),
+                        }
 
-            # Fonte 1: QL (Candidato de banco_ql + historico_ql)
+            # Auditoria: admissões que estão no QL (Candidato) mas NÃO no roster do Senior.
+            # São as que antes inflavam a conta. Ficam listadas no diagnóstico, mas não contam.
+            ql_fora_roster = {}   # (loja, nome_norm) -> linha
             for r in list(_hist_bruto) + list(_banco_bruto):
                 loja = _loja_int(r)
                 if not _no_escopo(loja):
@@ -1005,33 +1026,20 @@ try:
                     continue
                 cand = str(r.get('Candidato', '')).strip()
                 if cand.upper() in ['', '-', 'NAN', 'NONE', 'NULL', 'NAT']:
-                    admissoes_sem_candidato.add((loja, str(r.get('Nome', '')).strip().upper(), d_ad))
-                    continue  # sem candidato -> a fonte Excel provavelmente cobre essa pessoa
-                _add_pessoa(loja, cand, d_ad, 'QL')
-
-            # Fonte 2: Banco QL.xlsx (coluna Admissão do roster importado do Senior)
-            col_adm_excel = None
-            for c in df_bruto.columns:
-                if _norm_nome(c) == 'ADMISSAO':
-                    col_adm_excel = c
-                    break
-            n_excel_novos = 0
-            if col_adm_excel is not None:
-                for _, linha in df_bruto.iterrows():
-                    loja = _loja_int(linha)
-                    if not _no_escopo(loja):
-                        continue
-                    d_ad = _parse_data_admissao(linha.get(col_adm_excel))
-                    if d_ad is None or not (data_inicio_filtro <= d_ad <= data_fim_filtro):
-                        continue
-                    if _add_pessoa(loja, linha.get('Nome', ''), d_ad, 'Banco QL.xlsx'):
-                        n_excel_novos += 1
+                    continue
+                nome_norm = _norm_nome(cand)
+                if nome_norm in pessoas_por_loja.get(loja, set()):
+                    continue  # está no roster -> já contado
+                chave = (loja, nome_norm)
+                if chave not in ql_fora_roster:
+                    ql_fora_roster[chave] = {
+                        'Loja': loja, 'Candidato (só no QL)': str(cand).title(),
+                        'Data Admissão': d_ad.strftime('%d/%m/%Y'),
+                        'Vaga (Nome)': str(r.get('Nome', '')).title(),
+                    }
 
             df_conc_diag = pd.DataFrame(list(conc_registros.values()))
-
-            if datas_ad_invalidas:
-                st.caption(f"⚠️ {datas_ad_invalidas} registro(s) com Data de Admissão em formato não reconhecido "
-                           f"(ficaram de fora da contagem). Me envie um exemplo do valor para ajustar o parse.")
+            df_ql_fora = pd.DataFrame(list(ql_fora_roster.values()))
 
             tem_concluidas = any(len(s) > 0 for s in pessoas_por_loja.values())
             if df_rel.empty or (not df_rel['is_aberta'].any() and not tem_concluidas):
@@ -1166,30 +1174,38 @@ try:
                     n_banco = len(_banco_bruto)
                     n_hist = len(_hist_bruto)
                     n_conc_contadas = int(total_concluidas)
-                    n_sem_cand = len(admissoes_sem_candidato)
+                    n_ql_fora = len(df_ql_fora) if not df_ql_fora.empty else 0
                     st.markdown(
-                        f"- Linhas lidas do **banco_ql**: `{n_banco}`  \n"
-                        f"- Linhas lidas do **historico_ql**: `{n_hist}`  \n"
-                        f"- Admitidos que vieram **a mais** do `Banco QL.xlsx` (não estavam no QL): `{n_excel_novos}`  \n"
-                        f"- **Concluídas** = pessoas distintas admitidas no período (QL + Banco QL.xlsx, sem duplicar): `{n_conc_contadas}`"
+                        f"- **Concluídas** = pessoas distintas admitidas no período pelo roster do Senior "
+                        f"(`Banco QL.xlsx`): `{n_conc_contadas}`  \n"
+                        f"- Linhas lidas do banco_ql: `{n_banco}` | historico_ql: `{n_hist}`"
                     )
                     if col_adm_excel is None:
                         st.warning(
-                            "Não encontrei a coluna **Admissão** no `Banco QL.xlsx` — a 2ª fonte não entrou. "
+                            "Não encontrei a coluna **Admissão** no `Banco QL.xlsx` — a contagem ficou zerada. "
                             "Me diga o nome exato da coluna que eu ajusto."
                         )
-                    if n_sem_cand:
-                        st.caption(
-                            f"({n_sem_cand} admissão(ões) do QL no período estavam sem Candidato preenchido; "
-                            f"quando a pessoa também está no Banco QL.xlsx, ela é contada por lá.)"
-                        )
 
-                    st.markdown("**Pessoas contadas como admitidas no período:**")
+                    st.markdown("**Pessoas contadas como admitidas no período (roster Senior):**")
                     if not df_conc_diag.empty:
-                        df_conc = df_conc_diag[['Loja', 'Nome Admitido', 'Data Admissão', 'Fonte']].sort_values(['Loja', 'Nome Admitido'])
+                        df_conc = df_conc_diag[['Loja', 'Nome Admitido', 'Data Admissão']].sort_values(['Loja', 'Nome Admitido'])
                     else:
                         df_conc = df_conc_diag
                     st.dataframe(df_conc, use_container_width=True, hide_index=True)
+
+                    if n_ql_fora:
+                        st.markdown(
+                            f"**⚠️ {n_ql_fora} admissão(ões) lançada(s) no QL que NÃO estão no roster do Senior "
+                            f"(NÃO contadas — como o Cristiano Afonso):**"
+                        )
+                        st.caption(
+                            "Confira: se alguma dessas é uma admissão real que faltou no roster, o certo é "
+                            "acertar no Senior/`Banco QL.xlsx`. Se é lançamento errado, vale corrigir no QL."
+                        )
+                        st.dataframe(
+                            df_ql_fora[['Loja', 'Candidato (só no QL)', 'Data Admissão', 'Vaga (Nome)']].sort_values(['Loja', 'Candidato (só no QL)']),
+                            use_container_width=True, hide_index=True
+                        )
         
         st.markdown("---") 
 
