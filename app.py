@@ -915,6 +915,8 @@ try:
     # =========================================================
     if mostrar_relatorio:
         st.markdown("### 📅 Análise de Preenchimento por Período de Abertura")
+        _agora_br = datetime.now() - timedelta(hours=3)  # Streamlit Cloud roda em UTC; Brasília = UTC-3
+        st.caption(f"Relatório gerado em {_agora_br.strftime('%d/%m/%Y às %H:%M')}")
         
         col_d1, col_d2, _ = st.columns([1, 1, 3])
         with col_d1:
