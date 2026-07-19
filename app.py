@@ -190,6 +190,74 @@ def _ler_tabela_completa(supabase, tabela):
         inicio += passo
     return todas
 
+def _loja_int_val(v):
+    """Converte um valor de Loja (texto/float) em int; 0 se inválido."""
+    try:
+        return int(float(str(v)))
+    except Exception:
+        return 0
+
+# =========================================================================
+# 🗂️ LEDGER DE ADMISSÕES (histórico acumulado do roster)
+# O Banco QL.xlsx é uma FOTO do quadro atual: quem foi admitido e depois saiu
+# some do arquivo. Este ledger acumula, a cada importação, todos os admitidos
+# que aparecem no Excel — assim, mesmo que a pessoa saia depois, o registro
+# de que ela foi admitida naquele período NÃO se perde.
+# Tabela no Supabase: admissoes_registradas (crie com o DDL que passei no chat).
+# =========================================================================
+def capturar_admissoes_no_ledger(supabase, df_excel):
+    """Acumula no admissoes_registradas os admitidos do roster atual (Banco QL.xlsx),
+    inserindo só quem ainda não está lá (dedup por nome + data + loja). Retorna qtde nova."""
+    col_adm = None
+    for c in df_excel.columns:
+        if _norm_nome(c) == 'ADMISSAO':
+            col_adm = c
+            break
+    if col_adm is None:
+        return 0
+
+    existentes_rows = _ler_tabela_completa(supabase, "admissoes_registradas")
+    if existentes_rows is None:
+        return 0  # tabela ainda não existe -> ignora silenciosamente
+    existentes = set()
+    for r in existentes_rows:
+        existentes.add((r.get('nome_norm'), str(r.get('data_admissao_date')), _loja_int_val(r.get('Loja'))))
+
+    novos = []
+    for _, linha in df_excel.iterrows():
+        loja = _loja_int_val(linha.get('Loja'))
+        if loja <= 0:
+            continue
+        d = _parse_data_admissao(linha.get(col_adm))
+        if d is None:
+            continue
+        nome = str(linha.get('Nome', '')).strip()
+        nn = _norm_nome(nome)
+        if not nn:
+            continue
+        chave = (nn, d.isoformat(), loja)
+        if chave in existentes:
+            continue
+        existentes.add(chave)
+        novos.append({
+            "Loja": loja, "Nome": nome, "nome_norm": nn,
+            "Data Admissão": d.strftime('%d/%m/%Y'), "data_admissao_date": d.isoformat(),
+            "Dept": str(linha.get('Dept', '')), "Funcao": str(linha.get('Função', '')),
+            "Situacao": str(linha.get('Situação', '')),
+        })
+
+    inseridos = 0
+    for i in range(0, len(novos), 500):
+        try:
+            supabase.table("admissoes_registradas").insert(novos[i:i + 500]).execute()
+            inseridos += len(novos[i:i + 500])
+        except Exception as e:
+            print(f"[Ledger] Erro ao inserir lote: {e}")
+            break
+    if inseridos:
+        print(f"[Ledger] {inseridos} admissão(ões) nova(s) registrada(s).")
+    return inseridos
+
 def combinar_banco_e_historico(supabase):
     """Une banco_ql (registros vivos) + historico_ql (log/arquivados) e deduplica por
     (Loja, Nome), mantendo a versão mais recente de cada requisição. Usado pelo
@@ -532,6 +600,12 @@ try:
         st.cache_data.clear()  # garante recarregar o quadro já sem os arquivados
 
     df_bruto = carregar_dados_completos()
+
+    # Ledger de admissões: acumula os admitidos do roster atual (1x por dia por sessão),
+    # pra não perder quem foi admitido e depois saiu do Banco QL.xlsx.
+    if st.session_state.get("ledger_data") != date.today():
+        capturar_admissoes_no_ledger(supabase, df_bruto)
+        st.session_state["ledger_data"] = date.today()
 
     sessoes_globais = obter_rastreador_sessoes()
     if st.session_state["logado"]:
@@ -918,13 +992,21 @@ try:
         _agora_br = datetime.now() - timedelta(hours=3)  # Streamlit Cloud roda em UTC; Brasília = UTC-3
         st.caption(f"Relatório gerado em {_agora_br.strftime('%d/%m/%Y às %H:%M')}")
         
-        col_d1, col_d2, _ = st.columns([1, 1, 3])
+        col_d1, col_d2, col_d3 = st.columns([1, 1, 3])
         with col_d1:
             hoje = date.today()
             inicio_mes = date(hoje.year, hoje.month, 1)
             data_inicio_filtro = st.date_input("Data Início (Abertura):", value=inicio_mes, format="DD/MM/YYYY")
         with col_d2:
             data_fim_filtro = st.date_input("Data Fim (Abertura):", value=hoje, format="DD/MM/YYYY")
+        with col_d3:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            incluir_saidos = st.toggle(
+                "Incluir admitidos que já saíram (histórico acumulado)",
+                value=False,
+                help="Desligado: conta só quem permaneceu no roster (foto atual). "
+                     "Ligado: usa o ledger acumulado, incluindo quem foi admitido no período e depois saiu."
+            )
 
         if data_fim_filtro:
             # Fonte combinada: banco oficial (banco_ql) + histórico (historico_ql),
@@ -984,14 +1066,13 @@ try:
 
             df_rel = pd.DataFrame(linhas_rel)
 
-            # --- CONCLUÍDAS = pessoas DISTINTAS admitidas no período, pelo ROSTER DO SENIOR ---
-            # Fonte oficial = Banco QL.xlsx (coluna "Admissão"). O campo Candidato do QL é digitado
-            # manualmente e contém admissões que NÃO existem no Senior (ex.: Cristiano Afonso), então
-            # ele NÃO é mais usado para contar — só para auditoria (mostra os "extras" no diagnóstico).
-            pessoas_por_loja = {}             # loja -> set de nomes normalizados (roster Senior)
-            conc_registros = {}               # (loja, nome_norm) -> linha p/ tabela de diagnóstico
+            # --- CONCLUÍDAS = pessoas DISTINTAS admitidas no período ---
+            # Fonte base = roster atual (Banco QL.xlsx, coluna "Admissão") = quem PERMANECEU.
+            # Fonte acumulada = ledger admissoes_registradas = todos já admitidos no período
+            # (inclui quem saiu depois). O toggle "incluir_saidos" escolhe qual usar na contagem.
+            roster_por_loja = {}              # loja -> set nomes (permaneceram no roster)
+            info_pessoa = {}                  # (loja, nome_norm) -> {Nome Admitido, Data Admissão}
 
-            # Fonte oficial: Banco QL.xlsx (coluna Admissão do roster importado do Senior)
             col_adm_excel = None
             for c in df_bruto.columns:
                 if _norm_nome(c) == 'ADMISSAO':
@@ -1008,17 +1089,72 @@ try:
                     nome_norm = _norm_nome(linha.get('Nome', ''))
                     if not nome_norm:
                         continue
-                    pessoas_por_loja.setdefault(loja, set()).add(nome_norm)
-                    chave = (loja, nome_norm)
-                    if chave not in conc_registros:
-                        conc_registros[chave] = {
-                            'Loja': loja, 'Nome Admitido': str(linha.get('Nome', '')).title(),
-                            'Data Admissão': d_ad.strftime('%d/%m/%Y'),
-                        }
+                    roster_por_loja.setdefault(loja, set()).add(nome_norm)
+                    info_pessoa.setdefault((loja, nome_norm), {
+                        'Nome Admitido': str(linha.get('Nome', '')).title(),
+                        'Data Admissão': d_ad.strftime('%d/%m/%Y'),
+                    })
 
-            # Auditoria: admissões que estão no QL (Candidato) mas NÃO no roster do Senior.
-            # São as que antes inflavam a conta. Ficam listadas no diagnóstico, mas não contam.
-            ql_fora_roster = {}   # (loja, nome_norm) -> linha
+            # Ledger acumulado (admissoes_registradas): inclui quem já saiu do roster
+            ledger_por_loja = {}
+            for r in (_ler_tabela_completa(supabase, "admissoes_registradas") or []):
+                loja = _loja_int_val(r.get('Loja'))
+                if not _no_escopo(loja):
+                    continue
+                d_ad = _parse_data_admissao(r.get('data_admissao_date') or r.get('Data Admissão'))
+                if d_ad is None or not (data_inicio_filtro <= d_ad <= data_fim_filtro):
+                    continue
+                nn = r.get('nome_norm') or _norm_nome(r.get('Nome', ''))
+                if not nn:
+                    continue
+                ledger_por_loja.setdefault(loja, set()).add(nn)
+                info_pessoa.setdefault((loja, nn), {
+                    'Nome Admitido': str(r.get('Nome', '')).title(),
+                    'Data Admissão': d_ad.strftime('%d/%m/%Y'),
+                })
+
+            # Quem foi admitido no período mas JÁ SAIU do roster (está no ledger, não no roster)
+            saidos_por_loja = {}
+            for loja, nomes in ledger_por_loja.items():
+                dif = nomes - roster_por_loja.get(loja, set())
+                if dif:
+                    saidos_por_loja[loja] = dif
+
+            # Conjunto CONTADO conforme o toggle
+            if incluir_saidos:
+                pessoas_por_loja = {}
+                for loja in set(list(roster_por_loja) + list(ledger_por_loja)):
+                    pessoas_por_loja[loja] = roster_por_loja.get(loja, set()) | ledger_por_loja.get(loja, set())
+            else:
+                pessoas_por_loja = {loja: set(s) for loja, s in roster_por_loja.items()}
+
+            # Tabela de diagnóstico das pessoas contadas (marca quem já saiu)
+            conc_registros = {}
+            for loja, nomes in pessoas_por_loja.items():
+                for nn in nomes:
+                    base = info_pessoa.get((loja, nn), {'Nome Admitido': nn.title(), 'Data Admissão': '-'})
+                    saiu = nn in saidos_por_loja.get(loja, set())
+                    conc_registros[(loja, nn)] = {
+                        'Loja': loja, 'Nome Admitido': base['Nome Admitido'],
+                        'Data Admissão': base['Data Admissão'],
+                        'Situação': '🔴 Já saiu' if saiu else '🟢 No roster',
+                    }
+
+            # Lista dos que já saíram (sinalização), independente do toggle
+            saidos_registros = []
+            for loja, nomes in saidos_por_loja.items():
+                for nn in nomes:
+                    base = info_pessoa.get((loja, nn), {'Nome Admitido': nn.title(), 'Data Admissão': '-'})
+                    saidos_registros.append({
+                        'Loja': loja, 'Nome Admitido': base['Nome Admitido'],
+                        'Data Admissão': base['Data Admissão'],
+                    })
+
+            # Auditoria: admissões do QL (Candidato) que NÃO estão no roster NEM no ledger
+            todos_conhecidos = {}
+            for loja in set(list(roster_por_loja) + list(ledger_por_loja)):
+                todos_conhecidos[loja] = roster_por_loja.get(loja, set()) | ledger_por_loja.get(loja, set())
+            ql_fora_roster = {}
             for r in list(_hist_bruto) + list(_banco_bruto):
                 loja = _loja_int(r)
                 if not _no_escopo(loja):
@@ -1030,8 +1166,8 @@ try:
                 if cand.upper() in ['', '-', 'NAN', 'NONE', 'NULL', 'NAT']:
                     continue
                 nome_norm = _norm_nome(cand)
-                if nome_norm in pessoas_por_loja.get(loja, set()):
-                    continue  # está no roster -> já contado
+                if nome_norm in todos_conhecidos.get(loja, set()):
+                    continue
                 chave = (loja, nome_norm)
                 if chave not in ql_fora_roster:
                     ql_fora_roster[chave] = {
@@ -1042,6 +1178,7 @@ try:
 
             df_conc_diag = pd.DataFrame(list(conc_registros.values()))
             df_ql_fora = pd.DataFrame(list(ql_fora_roster.values()))
+            df_saidos = pd.DataFrame(saidos_registros)
 
             tem_concluidas = any(len(s) > 0 for s in pessoas_por_loja.values())
             if df_rel.empty or (not df_rel['is_aberta'].any() and not tem_concluidas):
@@ -1177,9 +1314,13 @@ try:
                     n_hist = len(_hist_bruto)
                     n_conc_contadas = int(total_concluidas)
                     n_ql_fora = len(df_ql_fora) if not df_ql_fora.empty else 0
+                    n_saidos = len(df_saidos) if not df_saidos.empty else 0
+                    modo = "histórico acumulado (inclui quem já saiu)" if incluir_saidos else "roster atual (só quem permaneceu)"
                     st.markdown(
-                        f"- **Concluídas** = pessoas distintas admitidas no período pelo roster do Senior "
-                        f"(`Banco QL.xlsx`): `{n_conc_contadas}`  \n"
+                        f"- Modo de contagem: **{modo}**  \n"
+                        f"- **Concluídas** no período: `{n_conc_contadas}`  \n"
+                        f"- Admitidos no período que **já saíram** do roster: `{n_saidos}` "
+                        f"({'incluídos' if incluir_saidos else 'NÃO incluídos'} na conta atual)  \n"
                         f"- Linhas lidas do banco_ql: `{n_banco}` | historico_ql: `{n_hist}`"
                     )
                     if col_adm_excel is None:
@@ -1188,16 +1329,26 @@ try:
                             "Me diga o nome exato da coluna que eu ajusto."
                         )
 
-                    st.markdown("**Pessoas contadas como admitidas no período (roster Senior):**")
+                    st.markdown("**Pessoas contadas como admitidas no período:**")
                     if not df_conc_diag.empty:
-                        df_conc = df_conc_diag[['Loja', 'Nome Admitido', 'Data Admissão']].sort_values(['Loja', 'Nome Admitido'])
+                        df_conc = df_conc_diag[['Loja', 'Nome Admitido', 'Data Admissão', 'Situação']].sort_values(['Loja', 'Nome Admitido'])
                     else:
                         df_conc = df_conc_diag
                     st.dataframe(df_conc, use_container_width=True, hide_index=True)
 
+                    if n_saidos:
+                        st.markdown(
+                            f"**👋 {n_saidos} admitido(s) no período que já saíram do roster** "
+                            f"(preservados no histórico acumulado — some no botão acima pra incluir/excluir):"
+                        )
+                        st.dataframe(
+                            df_saidos[['Loja', 'Nome Admitido', 'Data Admissão']].sort_values(['Loja', 'Nome Admitido']),
+                            use_container_width=True, hide_index=True
+                        )
+
                     if n_ql_fora:
                         st.markdown(
-                            f"**⚠️ {n_ql_fora} admissão(ões) lançada(s) no QL que NÃO estão no roster do Senior "
+                            f"**⚠️ {n_ql_fora} admissão(ões) lançada(s) no QL que NÃO estão no roster nem no histórico "
                             f"(NÃO contadas — como o Cristiano Afonso):**"
                         )
                         st.caption(
