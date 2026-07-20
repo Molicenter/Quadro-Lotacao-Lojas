@@ -133,15 +133,15 @@ def _norm_nome(s):
     return " ".join(s.split())
 
 def arquivar_admissoes_antigas(supabase):
-    """Move para historico_ql e REMOVE do banco_ql os lançamentos cuja Data Admissão
+    """Move para ql_historico e REMOVE do ql_banco os lançamentos cuja Data Admissão
     já passou de DIAS_RETENCAO_ADMISSAO dias. Assim o quadro operacional e o card
-    'Admitidos' ficam só com admissões recentes, e o banco_ql não cresce
+    'Admitidos' ficam só com admissões recentes, e o ql_banco não cresce
     indefinidamente. O histórico preserva tudo. Retorna a qtde arquivada."""
     try:
-        resp = supabase.table("banco_ql").select("*").execute()
+        resp = supabase.table("ql_banco").select("*").execute()
         registros = resp.data or []
     except Exception as e:
-        print(f"[Arquivamento] Erro ao ler banco_ql: {e}")
+        print(f"[Arquivamento] Erro ao ler ql_banco: {e}")
         return 0
 
     limite = date.today() - timedelta(days=DIAS_RETENCAO_ADMISSAO)
@@ -170,14 +170,14 @@ def arquivar_admissoes_antigas(supabase):
         }
         try:
             # 1º guarda no histórico, só então remove do banco principal
-            supabase.table("historico_ql").insert(log).execute()
-            supabase.table("banco_ql").delete().eq("Loja", loja_reg).eq("Nome", nome_reg).execute()
+            supabase.table("ql_historico").insert(log).execute()
+            supabase.table("ql_banco").delete().eq("Loja", loja_reg).eq("Nome", nome_reg).execute()
             arquivados += 1
         except Exception as e:
             print(f"[Arquivamento] Erro em {nome_reg}/{loja_reg}: {e}")
 
     if arquivados:
-        print(f"[Arquivamento] {arquivados} lançamento(s) movido(s) para historico_ql.")
+        print(f"[Arquivamento] {arquivados} lançamento(s) movido(s) para ql_historico.")
     return arquivados
 
 def _ler_tabela_completa(supabase, tabela):
@@ -211,10 +211,10 @@ def _loja_int_val(v):
 # some do arquivo. Este ledger acumula, a cada importação, todos os admitidos
 # que aparecem no Excel — assim, mesmo que a pessoa saia depois, o registro
 # de que ela foi admitida naquele período NÃO se perde.
-# Tabela no Supabase: admissoes_registradas (crie com o DDL que passei no chat).
+# Tabela no Supabase: ql_admissoes_registradas (crie com o DDL que passei no chat).
 # =========================================================================
 def capturar_admissoes_no_ledger(supabase, df_excel):
-    """Acumula no admissoes_registradas os admitidos do roster atual (Banco QL.xlsx),
+    """Acumula no ql_admissoes_registradas os admitidos do roster atual (Banco QL.xlsx),
     inserindo só quem ainda não está lá (dedup por nome + data + loja). Retorna qtde nova."""
     col_adm = None
     for c in df_excel.columns:
@@ -224,7 +224,7 @@ def capturar_admissoes_no_ledger(supabase, df_excel):
     if col_adm is None:
         return 0
 
-    existentes_rows = _ler_tabela_completa(supabase, "admissoes_registradas")
+    existentes_rows = _ler_tabela_completa(supabase, "ql_admissoes_registradas")
     if existentes_rows is None:
         return 0  # tabela ainda não existe -> ignora silenciosamente
     existentes = set()
@@ -257,7 +257,7 @@ def capturar_admissoes_no_ledger(supabase, df_excel):
     inseridos = 0
     for i in range(0, len(novos), 500):
         try:
-            supabase.table("admissoes_registradas").insert(novos[i:i + 500]).execute()
+            supabase.table("ql_admissoes_registradas").insert(novos[i:i + 500]).execute()
             inseridos += len(novos[i:i + 500])
         except Exception as e:
             print(f"[Ledger] Erro ao inserir lote: {e}")
@@ -267,11 +267,11 @@ def capturar_admissoes_no_ledger(supabase, df_excel):
     return inseridos
 
 def combinar_banco_e_historico(supabase):
-    """Une banco_ql (registros vivos) + historico_ql (log/arquivados) e deduplica por
+    """Une ql_banco (registros vivos) + ql_historico (log/arquivados) e deduplica por
     (Loja, Nome), mantendo a versão mais recente de cada requisição. Usado pelo
     Relatório de Efetividade para contar aberturas/admissões inclusive as já arquivadas."""
-    hist = _ler_tabela_completa(supabase, "historico_ql")
-    banco = _ler_tabela_completa(supabase, "banco_ql")
+    hist = _ler_tabela_completa(supabase, "ql_historico")
+    banco = _ler_tabela_completa(supabase, "ql_banco")
 
     # Descobre a coluna de ordem temporal disponível no histórico (pra pegar a versão mais nova)
     campo_ordem = None
@@ -493,7 +493,7 @@ def carregar_dados_completos():
 
     try:
         # --- SUPABASE: Buscar Dados ---
-        resp = supabase.table("banco_ql").select("*").execute()
+        resp = supabase.table("ql_banco").select("*").execute()
         dados_sheets = resp.data
         mapeados = set()
 
@@ -600,7 +600,7 @@ def carregar_dados_completos():
     return df
 
 try:
-    # Arquivamento automático: admissões com +7 dias vão pro histórico e saem do banco_ql.
+    # Arquivamento automático: admissões com +7 dias vão pro histórico e saem do ql_banco.
     # Roda 1x por dia por sessão (após a 1ª execução do dia, não há mais o que arquivar).
     if st.session_state.get("arquivamento_data") != date.today():
         arquivar_admissoes_antigas(supabase)
@@ -836,10 +836,10 @@ try:
                             "Sexo": "-", "Motivo": "-", "Status RH": "-", "Candidato": "-",
                             "Data Admissão": "-", "Usuario": st.session_state["usuario"]
                         }
-                        supabase.table("historico_ql").insert(log_zerar).execute()
+                        supabase.table("ql_historico").insert(log_zerar).execute()
 
                         # Remove o registro do banco principal -> a linha volta a ficar em aberto
-                        supabase.table("banco_ql").delete().eq("Loja", loja_salvamento).eq("Nome", colaborador_final).execute()
+                        supabase.table("ql_banco").delete().eq("Loja", loja_salvamento).eq("Nome", colaborador_final).execute()
 
                         st.sidebar.success("✅ Linha zerada! O registro voltou ao estado em aberto.")
                         st.cache_data.clear()
@@ -902,13 +902,13 @@ try:
                     
                     try:
                         # 1. Apaga o registro anterior se existir (garante o UPSERT perfeito)
-                        supabase.table("banco_ql").delete().eq("Loja", loja_salvamento).eq("Nome", colaborador_final).execute()
+                        supabase.table("ql_banco").delete().eq("Loja", loja_salvamento).eq("Nome", colaborador_final).execute()
                         
                         # 2. Insere a nova versão na tabela Banco
-                        supabase.table("banco_ql").insert(payload).execute()
+                        supabase.table("ql_banco").insert(payload).execute()
                         
                         # 3. Insere a mesma versão na tabela de Histórico (Log)
-                        supabase.table("historico_ql").insert(payload).execute()
+                        supabase.table("ql_historico").insert(payload).execute()
                         
                         st.sidebar.success("✅ Dados salvos com sucesso!")
                         st.cache_data.clear()
@@ -1017,7 +1017,7 @@ try:
             )
 
         if data_fim_filtro:
-            # Fonte combinada: banco oficial (banco_ql) + histórico (historico_ql),
+            # Fonte combinada: banco oficial (ql_banco) + histórico (ql_historico),
             # deduplicado por (Loja, Nome). Conta também aberturas/admissões já arquivadas.
             registros_rel, _hist_bruto, _banco_bruto = combinar_banco_e_historico(supabase)
 
@@ -1076,7 +1076,7 @@ try:
 
             # --- CONCLUÍDAS = pessoas DISTINTAS admitidas no período ---
             # Fonte base = roster atual (Banco QL.xlsx, coluna "Admissão") = quem PERMANECEU.
-            # Fonte acumulada = ledger admissoes_registradas = todos já admitidos no período
+            # Fonte acumulada = ledger ql_admissoes_registradas = todos já admitidos no período
             # (inclui quem saiu depois). O toggle "incluir_saidos" escolhe qual usar na contagem.
             roster_por_loja = {}              # loja -> set nomes (permaneceram no roster)
             info_pessoa = {}                  # (loja, nome_norm) -> {Nome Admitido, Data Admissão}
@@ -1103,9 +1103,9 @@ try:
                         'Data Admissão': d_ad.strftime('%d/%m/%Y'),
                     })
 
-            # Ledger acumulado (admissoes_registradas): inclui quem já saiu do roster
+            # Ledger acumulado (ql_admissoes_registradas): inclui quem já saiu do roster
             ledger_por_loja = {}
-            for r in (_ler_tabela_completa(supabase, "admissoes_registradas") or []):
+            for r in (_ler_tabela_completa(supabase, "ql_admissoes_registradas") or []):
                 loja = _loja_int_val(r.get('Loja'))
                 if not _no_escopo(loja):
                     continue
@@ -1329,7 +1329,7 @@ try:
                         f"- **Concluídas** no período: `{n_conc_contadas}`  \n"
                         f"- Admitidos no período que **já saíram** do roster: `{n_saidos}` "
                         f"({'incluídos' if incluir_saidos else 'NÃO incluídos'} na conta atual)  \n"
-                        f"- Linhas lidas do banco_ql: `{n_banco}` | historico_ql: `{n_hist}`"
+                        f"- Linhas lidas do ql_banco: `{n_banco}` | ql_historico: `{n_hist}`"
                     )
                     if col_adm_excel is None:
                         st.warning(
@@ -1389,7 +1389,7 @@ try:
         # 🎓 QUADRO DE ADMITIDOS: só admissões dos últimos DIAS_RETENCAO_ADMISSAO dias.
         df_exibicao = df_loja[df_loja['Admitido_Recente'] == True].copy()
         st.info(f"🎓 **Quadro de Admitidos** — colaboradores admitidos nos últimos {DIAS_RETENCAO_ADMISSAO} dias. "
-                f"Depois desse prazo, o lançamento é arquivado no histórico (historico_ql) e sai do sistema.")
+                f"Depois desse prazo, o lançamento é arquivado no histórico (ql_historico) e sai do sistema.")
     elif apenas_alterados or st.session_state["filtro_cards"] == "ALTERADOS":
         df_exibicao = df_loja[df_loja['Possui_Alteracao_Sheets'] == True].copy()
         st.info("💡 Exibindo estritamente colaboradores com digitação salva no Supabase.")
