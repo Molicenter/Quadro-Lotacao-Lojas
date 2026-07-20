@@ -96,9 +96,6 @@ DIAS_RETENCAO_ADMISSAO = 7
 def _parse_data_admissao(valor):
     """Converte uma data (texto DD/MM/AAAA, ISO, com hora, ou datetime/Timestamp do Excel)
     em date. None se vazia/inválida. Usada para Data Admissão e Data Abertura no relatório."""
-    def _parse_data_admissao(valor):
-    """Converte uma data (texto DD/MM/AAAA, ISO, com hora, ou datetime/Timestamp do Excel)
-    em date. None se vazia/inválida. Usada para Data Admissão e Data Abertura no relatório."""
     # ⚠️ NaT (célula de data vazia vinda do Excel) é subclasse de datetime, então
     # precisa ser barrado ANTES do isinstance abaixo — senão retorna NaT.date() (= NaT)
     # e estoura "NaTType does not support strftime" mais na frente.
