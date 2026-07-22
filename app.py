@@ -688,8 +688,8 @@ try:
     
     if tipo_registro == "Editar Colaborador Existente":
         funcionarios_loja = sorted(df_loja['Nome'].dropna().unique())
-        colaborador_selecionado = st.sidebar.selectbox("Selecione o Colaborador:", funcionarios_loja)
-        if colaborador_selecionado:
+        colaborador_selecionado = st.sidebar.selectbox("Selecione o Colaborador:", funcionarios_loja, index=None, placeholder="Escolha...")
+        if colaborador_selecionado is not None:
             dados_func = df_loja[df_loja['Nome'] == colaborador_selecionado].iloc[0]
             colaborador_final = colaborador_selecionado
             dept_final = str(dados_func['Dept']).strip()
