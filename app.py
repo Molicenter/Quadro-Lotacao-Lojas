@@ -1101,6 +1101,8 @@ try:
                     info_pessoa.setdefault((loja, nome_norm), {
                         'Nome Admitido': str(linha.get('Nome', '')).title(),
                         'Data Admissão': d_ad.strftime('%d/%m/%Y'),
+                        'Função': limpar_campo(linha.get('Função'), '-'),   # <-- novo
+                        'Dept': limpar_campo(linha.get('Dept'), '-'),       # <-- novo
                     })
 
             # Ledger acumulado (ql_admissoes_registradas): inclui quem já saiu do roster
@@ -1119,6 +1121,8 @@ try:
                 info_pessoa.setdefault((loja, nn), {
                     'Nome Admitido': str(r.get('Nome', '')).title(),
                     'Data Admissão': d_ad.strftime('%d/%m/%Y'),
+                    'Função': limpar_campo(r.get('Funcao'), '-'),   # <-- novo (sem cedilha: é o nome da coluna no Supabase)
+                    'Dept': limpar_campo(r.get('Dept'), '-'),       # <-- novo
                 })
 
             # Quem foi admitido no período mas JÁ SAIU do roster (está no ledger, não no roster)
@@ -1144,6 +1148,8 @@ try:
                     saiu = nn in saidos_por_loja.get(loja, set())
                     conc_registros[(loja, nn)] = {
                         'Loja': loja, 'Nome Admitido': base['Nome Admitido'],
+                        'Dept': base.get('Dept', '-'),        # <-- novo
+                        'Função': base.get('Função', '-'),    # <-- novo
                         'Data Admissão': base['Data Admissão'],
                         'Situação': '🔴 Já saiu' if saiu else '🟢 No roster',
                     }
@@ -1155,6 +1161,8 @@ try:
                     base = info_pessoa.get((loja, nn), {'Nome Admitido': nn.title(), 'Data Admissão': '-'})
                     saidos_registros.append({
                         'Loja': loja, 'Nome Admitido': base['Nome Admitido'],
+                        'Dept': base.get('Dept', '-'),        # <-- novo
+                        'Função': base.get('Função', '-'),    # <-- novo
                         'Data Admissão': base['Data Admissão'],
                     })
 
@@ -1339,7 +1347,7 @@ try:
 
                     st.markdown("**Pessoas contadas como admitidas no período:**")
                     if not df_conc_diag.empty:
-                        df_conc = df_conc_diag[['Loja', 'Nome Admitido', 'Data Admissão', 'Situação']].sort_values(['Loja', 'Nome Admitido'])
+                        df_conc = df_conc_diag[['Loja', 'Nome Admitido', 'Dept', 'Função', 'Data Admissão', 'Situação']].sort_values(['Loja', 'Nome Admitido'])
                     else:
                         df_conc = df_conc_diag
                     st.dataframe(df_conc, use_container_width=True, hide_index=True)
@@ -1350,7 +1358,7 @@ try:
                             f"(preservados no histórico acumulado — some no botão acima pra incluir/excluir):"
                         )
                         st.dataframe(
-                            df_saidos[['Loja', 'Nome Admitido', 'Data Admissão']].sort_values(['Loja', 'Nome Admitido']),
+                            df_saidos[['Loja', 'Nome Admitido', 'Dept', 'Função', 'Data Admissão']].sort_values(['Loja', 'Nome Admitido']),
                             use_container_width=True, hide_index=True
                         )
 
