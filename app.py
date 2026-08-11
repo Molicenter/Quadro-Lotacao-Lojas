@@ -333,6 +333,16 @@ MAPA_SIGLA_SEXO = {"-": "-", "I": "Indiferente", "M": "Masculino", "F": "Feminin
 OPCOES_MOTIVO = ["-", "Afastamento","Aumento QL", "Encerramento Contrato Exp.","Função Nova", "Mudança Setor", "Substituição", "Transferência"]
 OPCOES_STATUS_RH = ["-", "Requisição atendida", "Aguardando resposta Candidato", "Cancelado", "Divulgação da vaga", "Documentação Admissão", "Entrevista Loja", "Entrevista RH", "Exame Admissional", "Não Validado pelo gerente", "Previsão de Início", "Triagem de Curriculuns", "Validado pelo gerente", "Desistencia Candidato"]
 
+# =========================================================
+# 🏪 GRUPOS DE LOJAS DO SELETOR DO TOPO
+# Total Lojas      -> lojas 01 a 08
+# Total Lojas + CD -> lojas 01 a 08 + Loja 30 (CD). Fica de fora a Loja 50.
+# Total Rede       -> todas as lojas > 0
+# =========================================================
+LOJA_CD = 30
+LOJAS_TOTAL_LOJAS = [1, 2, 3, 4, 5, 6, 7, 8]
+LOJAS_TOTAL_LOJAS_CD = LOJAS_TOTAL_LOJAS + [LOJA_CD]
+
 OPCOES_HORARIO = [
     "-", "ART 62 CLT", "SG-SB 05:00-10:00 11:15-13:35", "SG-SB 05:50-11:30 13:20-15:00", 
     "SG-SB 06:00-10:00 11:10-14:30", "SG-SB 06:00-10:00 12:00-15:20", "SG-SB 06:00-11:00 12:15-14:35", 
@@ -347,7 +357,7 @@ OPCOES_HORARIO = [
     "SG-SB 10:00-12:30 14:30-19:20", "SG-SB 10:00-13:00 15:00-19:20", "SG-SB 10:00-14:00 16:00-19:20", 
     "SG-SB 11:00-14:00 16:00-20:20", "SG-SB 11:00-14:30 16:00-19:50", "SG-SB 11:00-15:00 17:00-20:20", 
     "SG-SB 11:20-14:00 16:00-20:40", "SG-SB 11:30-13:30 15:30-20:50", "SG-SB 11:30-14:00 16:00-20:50", 
-    "SG-SB 11:30-14:30 16:30-20:50", "SG-SB 11:30-15:30 17:30-20:50", "SG-SB 12:00-15:00 17:00-21:20", "SG-SB 12:30-15:00 17:00-21:50"
+    "SG-SB 11:30-14:30 16:30-20:50", "SG-SB 11:30-15:30 17:30-20:50", "SG-SB 12:00-15:00 17:00-21:20", "SG-SB 12:30-15:00 17:00-21:50",
     "SG-SB 13:00-16:00 17:10-21:30", "SG-SB 13:00-17:00 18:10-21:30", "SG-SB 13:10-15:00 16:50-22:20", 
     "SG-SX 07:00-12:00 13:12-17:00", "SG-SX 07:30-12:00 13:12-17:30", "SG-SX 07:30-12:00 13:42-18:00", 
     "SG-SX 07:30-12:00 14:00-18:18", "SG-SX 08:00-12:00 13:12-18:00", "SG-SX 08:00-13:00 14:12-18:00", 
@@ -652,15 +662,19 @@ try:
         modo_visao_global = False
     else:
         lojas_reais = sorted([int(l) for l in df_bruto['Loja'].unique() if int(l) > 0])
-        opcoes_selecao = ["Total Lojas", "Total Rede"] + lojas_reais
+        opcoes_selecao = ["Total Lojas", "Total Lojas + CD", "Total Rede"] + lojas_reais
         
         st.markdown("<div style='max-width: 300px;'>", unsafe_allow_html=True)
         loja_selecionada = st.selectbox("Selecione a Loja para Análise:", opcoes_selecao, format_func=lambda x: f"Loja {int(x):02d}" if isinstance(x, int) else str(x))
         st.markdown("</div>", unsafe_allow_html=True)
 
         if loja_selecionada == "Total Lojas":
-            df_loja = df_bruto[df_bruto['Loja'].isin([1, 2, 3, 4, 5, 6, 7, 8])].copy()
+            df_loja = df_bruto[df_bruto['Loja'].isin(LOJAS_TOTAL_LOJAS)].copy()
             st.info("📊 Exibindo dados agregados das **Lojas 01 a 08**.")
+            modo_visao_global = True
+        elif loja_selecionada == "Total Lojas + CD":
+            df_loja = df_bruto[df_bruto['Loja'].isin(LOJAS_TOTAL_LOJAS_CD)].copy()
+            st.info(f"🏭 Exibindo dados agregados das **Lojas 01 a 08 + CD (Loja {LOJA_CD:02d})**.")
             modo_visao_global = True
         elif loja_selecionada == "Total Rede":
             df_loja = df_bruto[df_bruto['Loja'] > 0].copy()
@@ -1026,7 +1040,9 @@ try:
             if isinstance(loja_selecionada, int):
                 lojas_escopo = [loja_selecionada]
             elif loja_selecionada == "Total Lojas":
-                lojas_escopo = [1, 2, 3, 4, 5, 6, 7, 8]
+                lojas_escopo = LOJAS_TOTAL_LOJAS
+            elif loja_selecionada == "Total Lojas + CD":
+                lojas_escopo = LOJAS_TOTAL_LOJAS_CD
             else:  # "Total Rede" -> todas as lojas > 0
                 lojas_escopo = None
 
