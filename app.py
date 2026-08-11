@@ -1459,6 +1459,11 @@ try:
     except Exception:
         mapa_orcado_dept, mapa_orcado_func = {}, {}
     df_real_base = df_loja[df_loja['Situação_Upper'].str.contains('ATIVO|FÉRIAS|FERIAS', na=False)]
+    # O QL orçado só existe para as lojas 01 a 08 (CD/Loja 50 não têm).
+    # Nas visões agregadas, limita o Real a essas lojas para os badges
+    # "Orçado x Real x Vagas" não compararem gente sem orçado correspondente.
+    if modo_visao_global:
+        df_real_base = df_real_base[df_real_base['Loja'].isin(LOJAS_TOTAL_LOJAS)]
 
     departamentos = sorted(df_exibicao['Dept'].dropna().unique())
 
