@@ -7,7 +7,8 @@ Reproduz o organograma de funções da planilha Excel dentro do app:
 cards por departamento/função, cabeçalho com venda e parâmetros,
 e rodapé Total / Real / Diferença.
 
-- Visão por loja individual ou agregada (Total Lojas / Total Rede)
+- Visão por loja individual ou agregada
+  (Total Lojas / Total Lojas + CD / Total Rede)
 - Valores orçados e parâmetros editáveis (perfis Admin/Analista e RH)
 - 'Real' é calculado automaticamente do quadro: Ativos + Férias
   (mesma regra dos cards do topo do app)
@@ -24,7 +25,15 @@ import unicodedata
 import pandas as pd
 import streamlit as st
 
+# =====================================================================
+# 🏪 ESCOPO DO ORÇADO
+# O QL orçado existe SOMENTE para as lojas 01 a 08. O CD (Loja 30) e a
+# Loja 50 não têm orçado cadastrado — por isso qualquer visão agregada do
+# topo ("Total Lojas", "Total Lojas + CD", "Total Rede") compara sempre
+# as mesmas 8 lojas, tanto no Orçado quanto no Real.
+# =====================================================================
 LOJAS_PADRAO = [1, 2, 3, 4, 5, 6, 7, 8]
+TITULO_TOTAL = "QL Orçado — Total Lojas (01 a 08)"
 
 # Cores por departamento (mesma paleta da planilha)
 CORES_DEPT = {
@@ -89,12 +98,30 @@ def _fmt_int(valor):
         return "-"
 
 
-def _calcular_real(df_quadro):
+def _lojas_do_escopo(loja_selecionada, lojas_disponiveis):
+    """Traduz a seleção do topo do app na lista de lojas do orçado.
+
+    - int  -> só aquela loja (se não tiver orçado, a visão avisa e sai)
+    - qualquer agregado ("Total Lojas", "Total Lojas + CD", "Total Rede")
+      -> lojas 01 a 08, que são as únicas com orçado cadastrado
+    """
+    if isinstance(loja_selecionada, int):
+        return [int(loja_selecionada)]
+    todas = sorted({int(l) for l in lojas_disponiveis if pd.notna(l)})
+    return [l for l in todas if l in LOJAS_PADRAO]
+
+
+def _calcular_real(df_quadro, lojas=None):
     """Real = colaboradores Ativos + Férias no quadro atual (mesma regra
-    dos cards do topo do app). Retorna None se o quadro não for informado."""
+    dos cards do topo do app). Se 'lojas' for informado, conta só essas
+    lojas — assim o Real bate com o escopo do orçado mesmo quando a
+    seleção do topo inclui CD/Loja 50. None se o quadro não for informado."""
     if df_quadro is None or df_quadro.empty or "Situação" not in df_quadro.columns:
         return None
-    sit = df_quadro["Situação"].astype(str).str.upper()
+    df = df_quadro
+    if lojas is not None and "Loja" in df.columns:
+        df = df[df["Loja"].isin(lojas)]
+    sit = df["Situação"].astype(str).str.upper()
     mask = sit.str.contains("ATIVO", na=False) | sit.str.contains("FÉRIAS|FERIAS", na=False)
     return int(mask.sum())
 
@@ -136,10 +163,8 @@ def carregar_mapas_orcado(_supabase, loja_selecionada):
     if df_orc.empty:
         return {}, {}
 
-    if isinstance(loja_selecionada, int):
-        df_sel = df_orc[df_orc["loja"] == int(loja_selecionada)]
-    else:  # Total Lojas / Total Rede -> orçado cadastrado (lojas 01 a 08)
-        df_sel = df_orc[df_orc["loja"].isin(LOJAS_PADRAO)]
+    lojas = _lojas_do_escopo(loja_selecionada, df_orc["loja"].unique())
+    df_sel = df_orc[df_orc["loja"].isin(lojas)]
 
     if df_sel.empty:
         return {}, {}
@@ -440,7 +465,8 @@ def renderizar_visao_ql_orcado(supabase, loja_selecionada, pode_editar=False, us
 
     Parâmetros:
         supabase          -> client Supabase já inicializado no app.py
-        loja_selecionada  -> int (loja específica) ou "Total Lojas"/"Total Rede"
+        loja_selecionada  -> int (loja específica) ou
+                             "Total Lojas" / "Total Lojas + CD" / "Total Rede"
         pode_editar       -> True para perfis com edição (analista/rh)
         usuario           -> e-mail do usuário logado (auditoria)
         df_quadro         -> DataFrame do quadro já filtrado pela seleção
@@ -459,11 +485,17 @@ def renderizar_visao_ql_orcado(supabase, loja_selecionada, pode_editar=False, us
         return
 
     modo_total = not isinstance(loja_selecionada, int)
+    lojas = _lojas_do_escopo(loja_selecionada, df_orc["loja"].unique())
 
     if modo_total:
-        lojas = sorted([l for l in df_orc["loja"].unique() if l in LOJAS_PADRAO])
         df_view, params = _agregar(df_orc, df_par, lojas)
-        titulo = "QL Orçado — Total Lojas (01 a 08)"
+        titulo = TITULO_TOTAL
+        # A seleção do topo pode incluir lojas sem orçado (CD/Loja 50):
+        # avisa que o comparativo abaixo ignora essas lojas nos dois lados.
+        if loja_selecionada != "Total Lojas":
+            st.info("ℹ️ O QL Orçado está cadastrado apenas para as **Lojas 01 a 08**. "
+                    "O comparativo abaixo (Orçado x Real) considera só essas lojas, "
+                    "mesmo com a seleção do topo incluindo CD/demais.")
     else:
         loja = int(loja_selecionada)
         df_view = df_orc[df_orc["loja"] == loja].sort_values(
@@ -478,7 +510,7 @@ def renderizar_visao_ql_orcado(supabase, loja_selecionada, pode_editar=False, us
 
     # Real calculado ao vivo do quadro (Ativos + Férias). Se o app não
     # passar o df_quadro, mantém o valor gravado no banco como fallback.
-    real_calculado = _calcular_real(df_quadro)
+    real_calculado = _calcular_real(df_quadro, lojas)
     if real_calculado is not None:
         params["real_quadro"] = real_calculado
 
@@ -530,4 +562,7 @@ def renderizar_visao_ql_orcado(supabase, loja_selecionada, pode_editar=False, us
 # Como o gerente já entra com loja_fixa, ele enxergará automaticamente
 # apenas o organograma da própria loja, somente leitura. Analista/RH
 # navegam por todas as lojas + Total e podem editar.
+#
+# ⚠️ Os nomes dos grupos ("Total Lojas", "Total Lojas + CD", "Total Rede")
+#    precisam bater EXATAMENTE com os do selectbox do app.py.
 # =====================================================================
