@@ -919,20 +919,10 @@ try:
                     "situacao": situacao_final,
                 }
 
-    # --- Modal de confirmação do "Zerar Linha" (abre no meio da tela) ---
-    if st.session_state.get("zerar_pendente"):
-        abrir_confirmacao_zerar(st.session_state["zerar_pendente"])
-
-    # --- Resultado da última tentativa de zerar (sobrevive ao st.rerun) ---
-    if "zerar_resultado" in st.session_state:
-        ok_zerar, msg_zerar = st.session_state.pop("zerar_resultado")
-        if ok_zerar:
-            st.sidebar.success(msg_zerar)
-        else:
-            st.sidebar.error(msg_zerar)
-
         # ==============================================================
         # 🔒 VALIDAÇÃO DE CAMPOS E SALVAMENTO NO SUPABASE
+        # ⚠️ Este bloco PRECISA ficar aqui dentro (mesmo nível do "if zerar_button"),
+        #    porque 'submit_button' só existe quando há colaborador selecionado.
         # ==============================================================
         if submit_button:
             val_data = str(nova_data_abertura).strip()
@@ -1000,6 +990,18 @@ try:
                         st.rerun()
                     except Exception as e:
                         st.sidebar.error(f"Erro de conexão: {e}")
+
+    # --- Modal de confirmação do "Zerar Linha" (abre no meio da tela) ---
+    if st.session_state.get("zerar_pendente"):
+        abrir_confirmacao_zerar(st.session_state["zerar_pendente"])
+
+    # --- Resultado da última tentativa de zerar (sobrevive ao st.rerun) ---
+    if "zerar_resultado" in st.session_state:
+        ok_zerar, msg_zerar = st.session_state.pop("zerar_resultado")
+        if ok_zerar:
+            st.sidebar.success(msg_zerar)
+        else:
+            st.sidebar.error(msg_zerar)
 
     # =========================================================
     # 🏪 5. INDICADORES E MATRIZ VISUAL CENTRAL
