@@ -366,6 +366,77 @@ OPCOES_HORARIO = [
     "SG-SX 7:30-17:30 SB 7:30-11:30", "SG-SX 8:00-18:00 SB 8:00-12:00", "SG-SX 8:30-18:00 SB 9:00-13:00"
 ]
 
+# =========================================================
+# 🧹 ZERAR LINHA — EXECUÇÃO + MODAL DE CONFIRMAÇÃO
+# O botão do formulário lateral apenas MARCA a intenção
+# (st.session_state["zerar_pendente"]); a exclusão só acontece
+# depois do "Sim, zerar" na janela de confirmação.
+# =========================================================
+def executar_zerar_linha(dados, usuario):
+    """Loga no ql_historico e remove do ql_banco -> a linha volta ao estado
+    em aberto. Retorna (sucesso, mensagem)."""
+    log_zerar = {
+        "Loja": dados["loja"], "Nome": dados["nome"],
+        "Dept": dados["dept"], "Função": dados["funcao"], "Situação": dados["situacao"],
+        "Observação": f"[LINHA ZERADA / REABERTA por {usuario}]",
+        "Data Abertura": "-", "Responsável": "-", "Horário Contrato": "-",
+        "Sexo": "-", "Motivo": "-", "Status RH": "-", "Candidato": "-",
+        "Data Admissão": "-", "Usuario": usuario
+    }
+    try:
+        # 1º guarda a auditoria no histórico, só então remove do banco principal
+        supabase.table("ql_historico").insert(log_zerar).execute()
+        supabase.table("ql_banco").delete().eq("Loja", dados["loja"]).eq("Nome", dados["nome"]).execute()
+        return True, "✅ Linha zerada! O registro voltou ao estado em aberto."
+    except Exception as e:
+        return False, f"Erro ao zerar registro: {e}"
+
+
+def _corpo_confirmacao_zerar(dados):
+    """Conteúdo da confirmação (usado tanto no modal quanto no fallback)."""
+    st.markdown(
+        f"**Colaborador:** {str(dados['nome']).title()}  \n"
+        f"**Loja:** {int(dados['loja']):02d} &nbsp;|&nbsp; **Dept:** {dados['dept']}  \n"
+        f"**Cargo:** {dados['funcao']}"
+    )
+    st.warning(
+        "Toda a digitação desta linha (Observação, Data Abertura, Responsável, "
+        "Horário Contrato, Sexo, Motivo, Status RH, Candidato e Data Admissão) "
+        "será removida e a vaga volta ao estado **em aberto**.\n\n"
+        "O registro é gravado no histórico (`ql_historico`) antes da exclusão."
+    )
+    col_nao, col_sim = st.columns(2)
+    with col_nao:
+        if st.button("↩️ Cancelar", use_container_width=True, key="btn_cancelar_zerar"):
+            st.session_state.pop("zerar_pendente", None)
+            st.rerun()
+    with col_sim:
+        if st.button("🧹 Sim, zerar linha", type="primary",
+                     use_container_width=True, key="btn_confirmar_zerar"):
+            with st.spinner("⏳ Removendo digitação e reabrindo a linha..."):
+                ok, msg = executar_zerar_linha(dados, st.session_state["usuario"])
+            st.session_state.pop("zerar_pendente", None)
+            st.session_state["zerar_resultado"] = (ok, msg)
+            if ok:
+                st.cache_data.clear()
+            st.rerun()
+
+
+# st.dialog existe a partir do Streamlit 1.37 (antes: st.experimental_dialog).
+# Se a versão do ambiente for mais antiga, cai para uma confirmação inline.
+_DECORADOR_DIALOG = getattr(st, "dialog", None) or getattr(st, "experimental_dialog", None)
+
+if _DECORADOR_DIALOG is not None:
+    abrir_confirmacao_zerar = _DECORADOR_DIALOG(
+        "⚠️ Confirmar: zerar linha / deixar em aberto?"
+    )(_corpo_confirmacao_zerar)
+else:
+    def abrir_confirmacao_zerar(dados):
+        with st.sidebar.container(border=True):
+            st.markdown("### ⚠️ Confirmar: zerar linha?")
+            _corpo_confirmacao_zerar(dados)
+
+
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
     st.session_state["usuario"] = ""
@@ -839,29 +910,26 @@ try:
             elif not colaborador_final:
                 st.sidebar.error("Selecione um colaborador para zerar a linha.")
             else:
-                with st.spinner("⏳ Removendo digitação e reabrindo a linha..."):
-                    loja_salvamento = int(dados_func['Loja']) if (dados_func is not None) else (int(loja_selecionada) if isinstance(loja_selecionada, int) else 1)
-                    try:
-                        # Log de auditoria no histórico ANTES de remover
-                        log_zerar = {
-                            "Loja": loja_salvamento, "Nome": colaborador_final,
-                            "Dept": dept_final, "Função": funcao_final, "Situação": situacao_final,
-                            "Observação": f"[LINHA ZERADA / REABERTA por {st.session_state['usuario']}]",
-                            "Data Abertura": "-", "Responsável": "-", "Horário Contrato": "-",
-                            "Sexo": "-", "Motivo": "-", "Status RH": "-", "Candidato": "-",
-                            "Data Admissão": "-", "Usuario": st.session_state["usuario"]
-                        }
-                        supabase.table("ql_historico").insert(log_zerar).execute()
+                # Não apaga nada agora: apenas guarda a intenção e deixa o modal
+                # de confirmação abrir logo abaixo. A exclusão só ocorre no "Sim".
+                loja_salvamento = int(dados_func['Loja']) if (dados_func is not None) else (int(loja_selecionada) if isinstance(loja_selecionada, int) else 1)
+                st.session_state["zerar_pendente"] = {
+                    "loja": loja_salvamento, "nome": colaborador_final,
+                    "dept": dept_final, "funcao": funcao_final,
+                    "situacao": situacao_final,
+                }
 
-                        # Remove o registro do banco principal -> a linha volta a ficar em aberto
-                        supabase.table("ql_banco").delete().eq("Loja", loja_salvamento).eq("Nome", colaborador_final).execute()
+    # --- Modal de confirmação do "Zerar Linha" (abre no meio da tela) ---
+    if st.session_state.get("zerar_pendente"):
+        abrir_confirmacao_zerar(st.session_state["zerar_pendente"])
 
-                        st.sidebar.success("✅ Linha zerada! O registro voltou ao estado em aberto.")
-                        st.cache_data.clear()
-                        time.sleep(2)
-                        st.rerun()
-                    except Exception as e:
-                        st.sidebar.error(f"Erro ao zerar registro: {e}")
+    # --- Resultado da última tentativa de zerar (sobrevive ao st.rerun) ---
+    if "zerar_resultado" in st.session_state:
+        ok_zerar, msg_zerar = st.session_state.pop("zerar_resultado")
+        if ok_zerar:
+            st.sidebar.success(msg_zerar)
+        else:
+            st.sidebar.error(msg_zerar)
 
         # ==============================================================
         # 🔒 VALIDAÇÃO DE CAMPOS E SALVAMENTO NO SUPABASE
