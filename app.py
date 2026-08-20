@@ -637,8 +637,13 @@ def carregar_dados_completos():
                 funcao_final = limpar_campo(registro.get('Função'), 'Sem Vínculo Atual')
                 if funcao_final == "-": funcao_final = 'Sem Vínculo Atual'
                 
-                situacao_final = limpar_campo(registro.get('Situação'), 'Demitido')
-                if situacao_final == "-": situacao_final = 'Demitido'
+                # Regra de negócio: se o colaborador não está mais no Banco QL.xlsx (saiu do
+                # banco importado), a Situação exibida é SEMPRE 'Demitido' — mesmo que o campo
+                # 'Situação' salvo no Supabase esteja desatualizado (ex.: ainda como "Ativos"
+                # de antes do desligamento). Isso evita casos como Anelisa/Eloah, em que o
+                # registro de lançamento (Data Abertura) mantinha a pessoa visível com um status
+                # incorreto.
+                situacao_final = 'Demitido'
                 
                 linha_manual = {
                     'Loja': loja_reg, 'Nome': nome_func, 'Situação': situacao_final, 
