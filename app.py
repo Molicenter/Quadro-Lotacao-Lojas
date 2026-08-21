@@ -821,14 +821,6 @@ try:
                     return v_padrao
                 return val
 
-            st.markdown("🔸 **Supervisor**")
-            val_obs_default = obter_val_default('Observação', "")
-            if perfil in ["analista", "rh", "supervisor"]:
-                nova_obs = st.text_area("Observação:", value=val_obs_default)
-            else:
-                st.text_input("Observação:", value=val_obs_default if val_obs_default else "-", disabled=True)
-                nova_obs = val_obs_default if val_obs_default else "-"
-            
             st.markdown("🔹 **Gerente**")
             if perfil in ["analista", "rh", "supervisor", "gerente"]:
                 data_ab_atual = obter_val_default('Data Abertura', "-")
@@ -838,22 +830,25 @@ try:
                     data_ab_default = date.today()
                 nova_data_ab_col = st.date_input("Data Abertura:", value=data_ab_default, format="DD/MM/YYYY")
                 nova_data_abertura = nova_data_ab_col.strftime("%d/%m/%Y")
-                
+
                 val_resp_default = obter_val_default('Responsável', "")
                 novo_responsavel = st.text_input("Responsável:", value=val_resp_default)
-                
+
                 val_horario_default = obter_val_default('Horário Contrato', "-")
                 idx_horario = OPCOES_HORARIO.index(val_horario_default) if val_horario_default in OPCOES_HORARIO else 0
                 novo_horario_contrato = st.selectbox("Horário Contrato:", OPCOES_HORARIO, index=idx_horario)
-                
+
                 sexo_exibido_atual = obter_val_default('Sexo', "-")
                 idx_sexo = OPCOES_SEXO.index(sexo_exibido_atual) if sexo_exibido_atual in OPCOES_SEXO else 0
                 texto_sexo_selecionado = st.selectbox("Sexo:", OPCOES_SEXO, index=idx_sexo)
                 novo_sexo = MAPA_SEXO_SIGLA.get(texto_sexo_selecionado, "-")
-                
+
                 motivo_atual = obter_val_default('Motivo', "-")
                 idx_motivo = OPCOES_MOTIVO.index(motivo_atual) if motivo_atual in OPCOES_MOTIVO else 0
                 novo_motivo = st.selectbox("Motivo:", OPCOES_MOTIVO, index=idx_motivo)
+
+                val_obs_default = obter_val_default('Observação', "")
+                nova_obs = st.text_area("Observação:", value=val_obs_default)
             else:
                 nova_data_abertura = st.text_input("Data Abertura:", value=obter_val_default('Data Abertura', "-"), disabled=True)
                 novo_responsavel = st.text_input("Responsável:", value=obter_val_default('Responsável', "-"), disabled=True)
@@ -861,7 +856,11 @@ try:
                 novo_sexo_exibido = st.text_input("Sexo:", value=obter_val_default('Sexo', "-"), disabled=True)
                 novo_sexo = MAPA_SEXO_SIGLA.get(novo_sexo_exibido, "-")
                 novo_motivo = st.text_input("Motivo:", value=obter_val_default('Motivo', "-"), disabled=True)
-            
+
+                val_obs_default = obter_val_default('Observação', "")
+                st.text_input("Observação:", value=val_obs_default if val_obs_default else "-", disabled=True)
+                nova_obs = val_obs_default if val_obs_default else "-"
+
             st.markdown("🔺 **Recursos Humanos (RH)**")
             if perfil in ["analista", "rh"]:
                 status_atual = obter_val_default('Status RH', "-")
@@ -1576,14 +1575,14 @@ try:
                 
                 if modo_visao_global:
                     colunas_selecionadas = [
-                        'Situação', 'Loja', 'Nome', 'Horario_Sistema_Real', 'Observação',
-                        'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo',
+                        'Situação', 'Loja', 'Nome', 'Horario_Sistema_Real',
+                        'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo', 'Observação',
                         'Status RH', 'Candidato', 'Data Admissão'
                     ]
                 else:
                     colunas_selecionadas = [
-                        'Situação', 'Nome', 'Horario_Sistema_Real', 'Observação',
-                        'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo',
+                        'Situação', 'Nome', 'Horario_Sistema_Real',
+                        'Data Abertura', 'Responsável', 'Horário Contrato', 'Sexo', 'Motivo', 'Observação',
                         'Status RH', 'Candidato', 'Data Admissão'
                     ]
 
@@ -1600,8 +1599,7 @@ try:
 <thead>
 <tr>
 <th colspan="{colspan_analista}" style="background-color: #0B3D63; color: white; text-align: center; font-weight: 600; padding: 8px;">📊 DONO: ANALISTA</th>
-<th colspan="1" style="background-color: #E5007D; color: white; text-align: center; font-weight: 600; padding: 8px;">📋 DONO: SUPERVISOR</th>
-<th colspan="5" style="background-color: #047857; color: white; text-align: center; font-weight: 600; padding: 8px;">🏪 DONO: GERENTE</th>
+<th colspan="6" style="background-color: #047857; color: white; text-align: center; font-weight: 600; padding: 8px;">🏪 DONO: GERENTE</th>
 <th colspan="3" style="background-color: #be123c; color: white; text-align: center; font-weight: 600; padding: 8px;">🤝 DONO: RH</th>
 </tr>
 <tr style="color: #22303C; font-weight: 500;">
@@ -1611,7 +1609,7 @@ try:
                 if modo_visao_global:
                     html_tabela += '<th style="background-color: #DCEBF7; color: #22303C; border-bottom: 2px solid #C4D4E0; text-align: center; padding: 8px;">Loja</th>\n'
                     
-                cabecalhos = ["Nome do Colaborador", "Horário Sistema", "Observação", "Data Abertura", "Responsável", "Horário Contrato", "Sexo", "Motivo", "Status RH", "Candidato", "Data Admissão"]
+                cabecalhos = ["Nome do Colaborador", "Horário Sistema", "Data Abertura", "Responsável", "Horário Contrato", "Sexo", "Motivo", "Observação", "Status RH", "Candidato", "Data Admissão"]
 
                 for cab in cabecalhos:
                     html_tabela += f'<th style="background-color: #DCEBF7; color: #22303C; border-bottom: 2px solid #C4D4E0; text-align: center; padding: 8px;">{cab}</th>\n'
