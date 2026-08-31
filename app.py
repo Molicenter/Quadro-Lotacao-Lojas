@@ -1341,7 +1341,7 @@ try:
 
                 fig.add_trace(go.Bar(
                     x=lojas_x, y=abertas_y,
-                    name='Abertas',
+                    name='Requisições',
                     marker_color='#90A4B8',
                     marker_line_width=0,
                     text=abertas_y,
@@ -1351,7 +1351,7 @@ try:
 
                 fig.add_trace(go.Bar(
                     x=lojas_x, y=alterados_y,
-                    name='Alterados',
+                    name='Abertas',
                     marker_color='#D6006C',
                     marker_line_width=0,
                     text=alterados_y,
@@ -1405,7 +1405,7 @@ try:
                 )
 
                 html_resumo = "<div class='tabela-container'>\n<table class='tabela-resumo'>\n<thead>\n<tr>\n"
-                html_resumo += "<th>Loja</th>\n<th>Abertas</th>\n<th>Alterados</th>\n<th>Concluídas</th>\n<th>%</th>\n"
+                html_resumo += "<th>Loja</th>\n<th>Requisições</th>\n<th>Abertas</th>\n<th>Concluídas</th>\n<th>%</th>\n"
                 html_resumo += "</tr>\n</thead>\n<tbody>\n"
 
                 for i in range(len(lojas_x)):
@@ -1428,7 +1428,7 @@ try:
                     html_resumo += f"<tr style='{estilo_linha}'>\n"
                     html_resumo += f"<td>{loja_atual}</td>\n"
                     html_resumo += f"<td>{abertas_atual}</td>\n"
-                    html_resumo += f"<td style='color: #D6006C; font-weight: bold;'>{alterados_atual}</td>\n"
+                    html_resumo += f"<td>{alterados_atual}</td>\n"
                     html_resumo += f"<td>{concluida_atual}</td>\n"
                     html_resumo += f"<td style='{estilo_perc}'>{perc_atual}%</td>\n"
                     html_resumo += "</tr>\n"
@@ -1453,8 +1453,8 @@ try:
                     modo = "histórico acumulado (inclui quem já saiu)" if incluir_saidos else "roster atual (só quem permaneceu)"
                     st.markdown(
                         f"- Modo de contagem: **{modo}**  \n"
-                        f"- **Abertas** no período: `{n_abertas_contadas}`  \n"
-                        f"- **Alterados** (digitação em andamento, foto atual): `{n_alterados_contadas}`  \n"
+                        f"- **Requisições** no período: `{n_abertas_contadas}`  \n"
+                        f"- **Abertas** (digitação em andamento, foto atual): `{n_alterados_contadas}`  \n"
                         f"- **Concluídas** no período: `{n_conc_contadas}`  \n"
                         f"- Admitidos no período que **já saíram** do roster: `{n_saidos}` "
                         f"({'incluídos' if incluir_saidos else 'NÃO incluídos'} na conta atual)  \n"
@@ -1466,7 +1466,7 @@ try:
                             "Me diga o nome exato da coluna que eu ajusto."
                         )
 
-                    st.markdown(f"**Vagas contadas como abertas no período ({n_abertas_contadas}):**")
+                    st.markdown(f"**Vagas contadas como Requisições no período ({n_abertas_contadas}):**")
                     if not df_abertas_diag.empty:
                         df_abertas_exib = df_abertas_diag[
                             ['Loja', 'Nome', 'Dept', 'Função', 'Data Abertura', 'Data Admissão', 'Situação']
