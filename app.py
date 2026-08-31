@@ -42,6 +42,15 @@ def init_supabase() -> Client:
 supabase = init_supabase()
 
 # Função auxiliar para higienizar strings nulas vindas do Pandas/Supabase
+def requisicao_atendida_com_admissao(df):
+    """Máscara: linhas com Status RH = 'Requisição atendida' E Data Admissão preenchida
+    (qualquer valor). Essas já concluíram a última etapa e não devem contar como
+    'Alterados' — nem no card, nem no filtro, nem no relatório de efetividade."""
+    status = df.get('Status RH', pd.Series("-", index=df.index)).astype(str).str.strip().str.upper()
+    data_ad = df.get('Data Admissão', pd.Series("-", index=df.index)).astype(str).str.strip().str.upper()
+    sem_data = data_ad.isin(['-', '', 'NAN', 'NONE', 'NULL', 'NAT'])
+    return status.eq('REQUISIÇÃO ATENDIDA') & (~sem_data)
+
 def limpar_campo(valor, padrao="-"):
     if pd.isna(valor):
         return padrao
@@ -1019,7 +1028,8 @@ try:
     ferias_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('FÉRIAS|FERIAS')])
     demitidos_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('DEMITIDO') | df_loja['Situação_Upper'].isin(['NAN', 'NONE', ''])])
     afastados_qtd = len(df_loja[df_loja['Situação_Upper'].str.contains('AFASTAMENTO|AFASTADO')])
-    alterados_qtd = len(df_loja[df_loja['Possui_Alteracao_Sheets'] == True])
+    df_loja['Requisicao_Concluida'] = requisicao_atendida_com_admissao(df_loja)
+    alterados_qtd = len(df_loja[(df_loja['Possui_Alteracao_Sheets'] == True) & (~df_loja['Requisicao_Concluida'])])
     admitidos_qtd = len(df_loja[df_loja['Admitido_Recente'] == True]) if 'Admitido_Recente' in df_loja.columns else 0
 
     def aplicar_filtro_card(status):
@@ -1288,9 +1298,25 @@ try:
                 else:
                     concluidas_por_loja = pd.DataFrame(columns=['Loja', 'Concluídas'])
 
-                df_relatorio = pd.merge(abertas_por_loja, concluidas_por_loja, on='Loja', how='outer').fillna(0)
+                # Alterados = colaboradores com digitação/movimentação salva (Possui_Alteracao_Sheets)
+                # que AINDA não concluíram a última etapa (Status RH 'Requisição atendida' + Data
+                # Admissão preenchida) — foto atual, mesma regra do card 🟣 Alterados, por loja.
+                df_bruto_escopo = df_bruto[
+                    df_bruto['Loja'].apply(lambda l: l > 0 and (lojas_escopo is None or l in lojas_escopo))
+                ].copy()
+                mask_alterado_ativo = (
+                    (df_bruto_escopo['Possui_Alteracao_Sheets'] == True)
+                    & (~requisicao_atendida_com_admissao(df_bruto_escopo))
+                )
+                alterados_por_loja = (
+                    df_bruto_escopo[mask_alterado_ativo].groupby('Loja').size().reset_index(name='Alterados')
+                )
+
+                df_relatorio = pd.merge(abertas_por_loja, concluidas_por_loja, on='Loja', how='outer')
+                df_relatorio = pd.merge(df_relatorio, alterados_por_loja, on='Loja', how='outer').fillna(0)
                 df_relatorio['Abertas'] = df_relatorio['Abertas'].astype(int)
                 df_relatorio['Concluídas'] = df_relatorio['Concluídas'].astype(int)
+                df_relatorio['Alterados'] = df_relatorio['Alterados'].astype(int)
                 df_relatorio = df_relatorio.sort_values('Loja').reset_index(drop=True)
                 df_relatorio['%'] = df_relatorio.apply(
                     lambda r: int(round(r['Concluídas'] / r['Abertas'] * 100)) if r['Abertas'] > 0 else 0,
@@ -1299,13 +1325,15 @@ try:
 
                 total_abertas = df_relatorio['Abertas'].sum()
                 total_concluidas = df_relatorio['Concluídas'].sum()
+                total_alterados = df_relatorio['Alterados'].sum()
                 perc_total = int(round((total_concluidas / total_abertas * 100) if total_abertas > 0 else 0, 0))
 
                 df_exibicao_rel = df_relatorio.copy()
                 df_exibicao_rel['Loja'] = df_exibicao_rel['Loja'].apply(lambda x: f"Loja {int(x):02d}")
-                
+
                 lojas_x = df_exibicao_rel['Loja'].tolist() + ["Total"]
                 abertas_y = df_exibicao_rel['Abertas'].tolist() + [total_abertas]
+                alterados_y = df_exibicao_rel['Alterados'].tolist() + [total_alterados]
                 concluidas_y = df_exibicao_rel['Concluídas'].tolist() + [total_concluidas]
                 perc_y = df_exibicao_rel['%'].tolist() + [perc_total]
 
@@ -1315,9 +1343,19 @@ try:
                     x=lojas_x, y=abertas_y,
                     name='Abertas',
                     marker_color='#90A4B8',
-                    marker_line_width=0, 
+                    marker_line_width=0,
                     text=abertas_y,
-                    textposition='outside', 
+                    textposition='outside',
+                    textfont=dict(color='#22303C', size=13)
+                ))
+
+                fig.add_trace(go.Bar(
+                    x=lojas_x, y=alterados_y,
+                    name='Alterados',
+                    marker_color='#D6006C',
+                    marker_line_width=0,
+                    text=alterados_y,
+                    textposition='outside',
                     textfont=dict(color='#22303C', size=13)
                 ))
 
@@ -1335,10 +1373,10 @@ try:
                 for i, loja in enumerate(lojas_x):
                     fig.add_annotation(
                         x=loja,
-                        y=max(abertas_y[i], concluidas_y[i]) + (teto_grafico * 0.15), 
+                        y=max(abertas_y[i], alterados_y[i], concluidas_y[i]) + (teto_grafico * 0.15),
                         text=f"<b>{perc_y[i]}%</b>",
                         showarrow=False,
-                        font=dict(color="#E5007D" if perc_y[i] > 0 else "#90A4B8", size=15) 
+                        font=dict(color="#E5007D" if perc_y[i] > 0 else "#90A4B8", size=15)
                     )
 
                 fig.update_layout(
@@ -1367,28 +1405,30 @@ try:
                 )
 
                 html_resumo = "<div class='tabela-container'>\n<table class='tabela-resumo'>\n<thead>\n<tr>\n"
-                html_resumo += "<th>Loja</th>\n<th>Abertas</th>\n<th>Concluídas</th>\n<th>%</th>\n"
+                html_resumo += "<th>Loja</th>\n<th>Abertas</th>\n<th>Alterados</th>\n<th>Concluídas</th>\n<th>%</th>\n"
                 html_resumo += "</tr>\n</thead>\n<tbody>\n"
-                
+
                 for i in range(len(lojas_x)):
                     loja_atual = lojas_x[i]
                     abertas_atual = abertas_y[i]
+                    alterados_atual = alterados_y[i]
                     concluida_atual = concluidas_y[i]
                     perc_atual = perc_y[i]
-                        
+
                     if perc_atual >= 50:
                         estilo_perc = "color: #10b981; font-weight: bold; background-color: rgba(16, 185, 129, 0.1);"
                     else:
                         estilo_perc = "color: #ef4444; font-weight: bold; background-color: rgba(239, 68, 68, 0.1);"
-                        
+
                     if loja_atual == "Total":
                         estilo_linha = "background-color: #DCEBF7; font-weight: bold;"
                     else:
                         estilo_linha = ""
-                        
+
                     html_resumo += f"<tr style='{estilo_linha}'>\n"
                     html_resumo += f"<td>{loja_atual}</td>\n"
                     html_resumo += f"<td>{abertas_atual}</td>\n"
+                    html_resumo += f"<td style='color: #D6006C; font-weight: bold;'>{alterados_atual}</td>\n"
                     html_resumo += f"<td>{concluida_atual}</td>\n"
                     html_resumo += f"<td style='{estilo_perc}'>{perc_atual}%</td>\n"
                     html_resumo += "</tr>\n"
@@ -1408,11 +1448,13 @@ try:
                     n_hist = len(_hist_bruto)
                     n_conc_contadas = int(total_concluidas)
                     n_abertas_contadas = int(total_abertas)
+                    n_alterados_contadas = int(total_alterados)
                     n_saidos = len(df_saidos) if not df_saidos.empty else 0
                     modo = "histórico acumulado (inclui quem já saiu)" if incluir_saidos else "roster atual (só quem permaneceu)"
                     st.markdown(
                         f"- Modo de contagem: **{modo}**  \n"
                         f"- **Abertas** no período: `{n_abertas_contadas}`  \n"
+                        f"- **Alterados** (digitação em andamento, foto atual): `{n_alterados_contadas}`  \n"
                         f"- **Concluídas** no período: `{n_conc_contadas}`  \n"
                         f"- Admitidos no período que **já saíram** do roster: `{n_saidos}` "
                         f"({'incluídos' if incluir_saidos else 'NÃO incluídos'} na conta atual)  \n"
@@ -1473,8 +1515,9 @@ try:
         st.info(f"🎓 **Quadro de Admitidos** — colaboradores admitidos nos últimos {DIAS_RETENCAO_ADMISSAO} dias. "
                 f"Depois desse prazo, o lançamento é arquivado no histórico (ql_historico) e sai do sistema.")
     elif apenas_alterados or st.session_state["filtro_cards"] == "ALTERADOS":
-        df_exibicao = df_loja[df_loja['Possui_Alteracao_Sheets'] == True].copy()
-        st.info("💡 Exibindo estritamente colaboradores com digitação salva no Supabase.")
+        df_exibicao = df_loja[(df_loja['Possui_Alteracao_Sheets'] == True) & (~df_loja['Requisicao_Concluida'])].copy()
+        st.info("💡 Exibindo estritamente colaboradores com digitação salva no Supabase "
+                "(exclui quem já está com Status RH 'Requisição atendida' e Data Admissão preenchida).")
     else:
         # Quadro operacional do dia a dia: admissões antigas saem daqui.
         # Os dados NÃO são apagados — continuam no Relatório de Efetividade e no card "Admitidos".
