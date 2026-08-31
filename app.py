@@ -1157,6 +1157,8 @@ try:
                 linhas_rel.append({
                     'Loja': loja,
                     'Nome': str(r.get('Nome', '')).title(),
+                    'Dept': limpar_campo(r.get('Dept'), '-'),
+                    'Função': limpar_campo(r.get('Função'), '-'),
                     'Data Abertura': r.get('Data Abertura'),
                     'Data Admissão': raw_ad,
                     'is_aberta': is_aberta,
@@ -1257,34 +1259,19 @@ try:
                         'Data Admissão': base['Data Admissão'],
                     })
 
-            # Auditoria: admissões do QL (Candidato) que NÃO estão no roster NEM no ledger
-            todos_conhecidos = {}
-            for loja in set(list(roster_por_loja) + list(ledger_por_loja)):
-                todos_conhecidos[loja] = roster_por_loja.get(loja, set()) | ledger_por_loja.get(loja, set())
-            ql_fora_roster = {}
-            for r in list(_hist_bruto) + list(_banco_bruto):
-                loja = _loja_int(r)
-                if not _no_escopo(loja):
-                    continue
-                d_ad = _parse_data_admissao(r.get('Data Admissão'))
-                if d_ad is None or not (data_inicio_filtro <= d_ad <= data_fim_filtro):
-                    continue
-                cand = str(r.get('Candidato', '')).strip()
-                if cand.upper() in ['', '-', 'NAN', 'NONE', 'NULL', 'NAT']:
-                    continue
-                nome_norm = _norm_nome(cand)
-                if nome_norm in todos_conhecidos.get(loja, set()):
-                    continue
-                chave = (loja, nome_norm)
-                if chave not in ql_fora_roster:
-                    ql_fora_roster[chave] = {
-                        'Loja': loja, 'Candidato (só no QL)': str(cand).title(),
-                        'Data Admissão': d_ad.strftime('%d/%m/%Y'),
-                        'Vaga (Nome)': str(r.get('Nome', '')).title(),
-                    }
+            # Extrato das vagas contadas como ABERTAS no período (mesma lógica do gráfico/tabela)
+            if not df_rel.empty:
+                df_abertas_diag = df_rel[df_rel['is_aberta']].copy()
+            else:
+                df_abertas_diag = pd.DataFrame()
+            if not df_abertas_diag.empty:
+                df_abertas_diag['Data Abertura'] = df_abertas_diag['Data Abertura'].apply(formatar_data_br)
+                df_abertas_diag['Data Admissão'] = df_abertas_diag['Data Admissão'].apply(formatar_data_br)
+                df_abertas_diag['Situação'] = df_abertas_diag['is_concluida'].apply(
+                    lambda x: '🟢 Concluída' if x else '🟡 Em aberto'
+                )
 
             df_conc_diag = pd.DataFrame(list(conc_registros.values()))
-            df_ql_fora = pd.DataFrame(list(ql_fora_roster.values()))
             df_saidos = pd.DataFrame(saidos_registros)
 
             tem_concluidas = any(len(s) > 0 for s in pessoas_por_loja.values())
@@ -1420,11 +1407,12 @@ try:
                     n_banco = len(_banco_bruto)
                     n_hist = len(_hist_bruto)
                     n_conc_contadas = int(total_concluidas)
-                    n_ql_fora = len(df_ql_fora) if not df_ql_fora.empty else 0
+                    n_abertas_contadas = int(total_abertas)
                     n_saidos = len(df_saidos) if not df_saidos.empty else 0
                     modo = "histórico acumulado (inclui quem já saiu)" if incluir_saidos else "roster atual (só quem permaneceu)"
                     st.markdown(
                         f"- Modo de contagem: **{modo}**  \n"
+                        f"- **Abertas** no período: `{n_abertas_contadas}`  \n"
                         f"- **Concluídas** no período: `{n_conc_contadas}`  \n"
                         f"- Admitidos no período que **já saíram** do roster: `{n_saidos}` "
                         f"({'incluídos' if incluir_saidos else 'NÃO incluídos'} na conta atual)  \n"
@@ -1435,6 +1423,15 @@ try:
                             "Não encontrei a coluna **Admissão** no `Banco QL.xlsx` — a contagem ficou zerada. "
                             "Me diga o nome exato da coluna que eu ajusto."
                         )
+
+                    st.markdown(f"**Vagas contadas como abertas no período ({n_abertas_contadas}):**")
+                    if not df_abertas_diag.empty:
+                        df_abertas_exib = df_abertas_diag[
+                            ['Loja', 'Nome', 'Dept', 'Função', 'Data Abertura', 'Data Admissão', 'Situação']
+                        ].sort_values(['Loja', 'Nome'])
+                    else:
+                        df_abertas_exib = df_abertas_diag
+                    st.dataframe(df_abertas_exib, use_container_width=True, hide_index=True)
 
                     st.markdown("**Pessoas contadas como admitidas no período:**")
                     if not df_conc_diag.empty:
@@ -1450,20 +1447,6 @@ try:
                         )
                         st.dataframe(
                             df_saidos[['Loja', 'Nome Admitido', 'Dept', 'Função', 'Data Admissão']].sort_values(['Loja', 'Nome Admitido']),
-                            use_container_width=True, hide_index=True
-                        )
-
-                    if n_ql_fora:
-                        st.markdown(
-                            f"**⚠️ {n_ql_fora} admissão(ões) lançada(s) no QL que NÃO estão no roster nem no histórico "
-                            f"(NÃO contadas — como o Cristiano Afonso):**"
-                        )
-                        st.caption(
-                            "Confira: se alguma dessas é uma admissão real que faltou no roster, o certo é "
-                            "acertar no Senior/`Banco QL.xlsx`. Se é lançamento errado, vale corrigir no QL."
-                        )
-                        st.dataframe(
-                            df_ql_fora[['Loja', 'Candidato (só no QL)', 'Data Admissão', 'Vaga (Nome)']].sort_values(['Loja', 'Candidato (só no QL)']),
                             use_container_width=True, hide_index=True
                         )
         
