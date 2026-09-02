@@ -102,6 +102,17 @@ def formatar_data_br(valor):
 # =========================================================
 DIAS_RETENCAO_ADMISSAO = 7
 
+# =========================================================
+# 🚪 RETENÇÃO DE DEMITIDOS NO QUADRO OPERACIONAL
+# O Banco QL.xlsx traz 100% dos nomes da planilha, inclusive quem já foi
+# desligado há muito tempo. Pra manter o quadro do dia a dia limpo, um
+# colaborador "Demitido" some do quadro operacional depois de
+# DIAS_RETENCAO_DEMISSAO dias contados da 'Data Afastamento'. Os dados
+# NÃO são apagados: a linha continua existindo no Excel/Banco, só não é
+# mais exibida no quadro operacional.
+# =========================================================
+DIAS_RETENCAO_DEMISSAO = 10
+
 def _parse_data_admissao(valor):
     """Converte uma data (texto DD/MM/AAAA, ISO, com hora, ou datetime/Timestamp do Excel)
     em date. None se vazia/inválida. Usada para Data Admissão e Data Abertura no relatório."""
@@ -691,6 +702,20 @@ def carregar_dados_completos():
     # Recente: admitido dentro dos últimos DIAS_RETENCAO_ADMISSAO dias (aparece no card)
     df['Admitido_Recente'] = datas_ad.apply(
         lambda d: (d is not None) and (limite_admissao <= d <= hoje_ref)
+    )
+
+    # --- Marcação de demitidos antigos (não destrutiva) ---
+    # Demitido_Arquivar -> Situação = Demitido e 'Data Afastamento' há mais de
+    # DIAS_RETENCAO_DEMISSAO dias. Só se aplica a Demitido (não a Afastamento/Férias,
+    # que podem ter uma data antiga de início e continuam ativos no quadro).
+    limite_demissao = hoje_ref - timedelta(days=DIAS_RETENCAO_DEMISSAO)
+    situacao_upper_tmp = df['Situação'].astype(str).str.upper()
+    if 'Data Afastamento' in df.columns:
+        datas_afast = df['Data Afastamento'].apply(_parse_data_admissao)
+    else:
+        datas_afast = pd.Series([None] * len(df), index=df.index)
+    df['Demitido_Arquivar'] = situacao_upper_tmp.str.contains('DEMITIDO') & datas_afast.apply(
+        lambda d: (d is not None) and (d < limite_demissao)
     )
 
     return df
@@ -1538,6 +1563,12 @@ try:
         for c in colunas_requisicao:
             df_exibicao.loc[excel_arquivar, c] = "-"
         df_exibicao.loc[excel_arquivar, 'Possui_Alteracao_Sheets'] = False
+
+        # 3) Demitido há mais de DIAS_RETENCAO_DEMISSAO dias (Data Afastamento) -> some
+        #    do quadro operacional. Permanece no Banco QL.xlsx/Supabase, só não é mais
+        #    exibido aqui — mantém o quadro limpo sem perder o histórico.
+        demitidos_arquivar = df_exibicao['Demitido_Arquivar'] == True
+        df_exibicao = df_exibicao[~demitidos_arquivar]
 
     # Filtra o dataframe principal se algum botão de status for clicado
     filtro_atual = st.session_state["filtro_cards"]
