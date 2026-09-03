@@ -1313,8 +1313,10 @@ try:
             if df_rel.empty or (not df_rel['is_aberta'].any() and not tem_concluidas):
                 st.info("Nenhuma abertura ou admissão encontrada no período selecionado para esta(s) loja(s).")
             else:
-                abertas_por_loja = (
-                    df_rel[df_rel['is_aberta']].groupby('Loja').size().reset_index(name='Abertas')
+                # Requisições = TODAS as requisições que tocaram o período (abertas até a
+                # data fim e não fechadas antes do início) — abertas OU já concluídas.
+                requisicoes_por_loja = (
+                    df_rel[df_rel['is_aberta']].groupby('Loja').size().reset_index(name='Requisições')
                 )
                 if pessoas_por_loja:
                     concluidas_por_loja = pd.DataFrame(
@@ -1323,63 +1325,56 @@ try:
                 else:
                     concluidas_por_loja = pd.DataFrame(columns=['Loja', 'Concluídas'])
 
-                # Alterados = colaboradores com digitação/movimentação salva (Possui_Alteracao_Sheets)
-                # que AINDA não concluíram a última etapa (Status RH 'Requisição atendida' + Data
-                # Admissão preenchida) — foto atual, mesma regra do card 🟣 Alterados, por loja.
-                df_bruto_escopo = df_bruto[
-                    df_bruto['Loja'].apply(lambda l: l > 0 and (lojas_escopo is None or l in lojas_escopo))
-                ].copy()
-                mask_alterado_ativo = (
-                    (df_bruto_escopo['Possui_Alteracao_Sheets'] == True)
-                    & (~requisicao_atendida_com_admissao(df_bruto_escopo))
-                )
-                alterados_por_loja = (
-                    df_bruto_escopo[mask_alterado_ativo].groupby('Loja').size().reset_index(name='Alterados')
+                # Abertas = subconjunto das Requisições que AINDA não finalizaram o processo,
+                # ou seja, ainda não têm Data Admissão preenchida dentro do período.
+                pendentes_por_loja = (
+                    df_rel[df_rel['is_aberta'] & ~df_rel['is_concluida']]
+                    .groupby('Loja').size().reset_index(name='Abertas')
                 )
 
-                df_relatorio = pd.merge(abertas_por_loja, concluidas_por_loja, on='Loja', how='outer')
-                df_relatorio = pd.merge(df_relatorio, alterados_por_loja, on='Loja', how='outer').fillna(0)
-                df_relatorio['Abertas'] = df_relatorio['Abertas'].astype(int)
+                df_relatorio = pd.merge(requisicoes_por_loja, concluidas_por_loja, on='Loja', how='outer')
+                df_relatorio = pd.merge(df_relatorio, pendentes_por_loja, on='Loja', how='outer').fillna(0)
+                df_relatorio['Requisições'] = df_relatorio['Requisições'].astype(int)
                 df_relatorio['Concluídas'] = df_relatorio['Concluídas'].astype(int)
-                df_relatorio['Alterados'] = df_relatorio['Alterados'].astype(int)
+                df_relatorio['Abertas'] = df_relatorio['Abertas'].astype(int)
                 df_relatorio = df_relatorio.sort_values('Loja').reset_index(drop=True)
                 df_relatorio['%'] = df_relatorio.apply(
-                    lambda r: int(round(r['Concluídas'] / r['Abertas'] * 100)) if r['Abertas'] > 0 else 0,
+                    lambda r: int(round(r['Concluídas'] / r['Requisições'] * 100)) if r['Requisições'] > 0 else 0,
                     axis=1
                 )
 
-                total_abertas = df_relatorio['Abertas'].sum()
+                total_requisicoes = df_relatorio['Requisições'].sum()
                 total_concluidas = df_relatorio['Concluídas'].sum()
-                total_alterados = df_relatorio['Alterados'].sum()
-                perc_total = int(round((total_concluidas / total_abertas * 100) if total_abertas > 0 else 0, 0))
+                total_abertas = df_relatorio['Abertas'].sum()
+                perc_total = int(round((total_concluidas / total_requisicoes * 100) if total_requisicoes > 0 else 0, 0))
 
                 df_exibicao_rel = df_relatorio.copy()
                 df_exibicao_rel['Loja'] = df_exibicao_rel['Loja'].apply(lambda x: f"Loja {int(x):02d}")
 
                 lojas_x = df_exibicao_rel['Loja'].tolist() + ["Total"]
+                requisicoes_y = df_exibicao_rel['Requisições'].tolist() + [total_requisicoes]
                 abertas_y = df_exibicao_rel['Abertas'].tolist() + [total_abertas]
-                alterados_y = df_exibicao_rel['Alterados'].tolist() + [total_alterados]
                 concluidas_y = df_exibicao_rel['Concluídas'].tolist() + [total_concluidas]
                 perc_y = df_exibicao_rel['%'].tolist() + [perc_total]
 
                 fig = go.Figure()
 
                 fig.add_trace(go.Bar(
-                    x=lojas_x, y=abertas_y,
+                    x=lojas_x, y=requisicoes_y,
                     name='Requisições',
                     marker_color='#90A4B8',
                     marker_line_width=0,
-                    text=abertas_y,
+                    text=requisicoes_y,
                     textposition='outside',
                     textfont=dict(color='#22303C', size=13)
                 ))
 
                 fig.add_trace(go.Bar(
-                    x=lojas_x, y=alterados_y,
+                    x=lojas_x, y=abertas_y,
                     name='Abertas',
                     marker_color='#D6006C',
                     marker_line_width=0,
-                    text=alterados_y,
+                    text=abertas_y,
                     textposition='outside',
                     textfont=dict(color='#22303C', size=13)
                 ))
@@ -1394,11 +1389,11 @@ try:
                     textfont=dict(color='#22303C', size=13)
                 ))
 
-                teto_grafico = max(abertas_y) if abertas_y else 1
+                teto_grafico = max(requisicoes_y) if requisicoes_y else 1
                 for i, loja in enumerate(lojas_x):
                     fig.add_annotation(
                         x=loja,
-                        y=max(abertas_y[i], alterados_y[i], concluidas_y[i]) + (teto_grafico * 0.15),
+                        y=max(requisicoes_y[i], abertas_y[i], concluidas_y[i]) + (teto_grafico * 0.15),
                         text=f"<b>{perc_y[i]}%</b>",
                         showarrow=False,
                         font=dict(color="#E5007D" if perc_y[i] > 0 else "#90A4B8", size=15)
@@ -1435,8 +1430,8 @@ try:
 
                 for i in range(len(lojas_x)):
                     loja_atual = lojas_x[i]
+                    requisicoes_atual = requisicoes_y[i]
                     abertas_atual = abertas_y[i]
-                    alterados_atual = alterados_y[i]
                     concluida_atual = concluidas_y[i]
                     perc_atual = perc_y[i]
 
@@ -1452,8 +1447,8 @@ try:
 
                     html_resumo += f"<tr style='{estilo_linha}'>\n"
                     html_resumo += f"<td>{loja_atual}</td>\n"
+                    html_resumo += f"<td>{requisicoes_atual}</td>\n"
                     html_resumo += f"<td>{abertas_atual}</td>\n"
-                    html_resumo += f"<td>{alterados_atual}</td>\n"
                     html_resumo += f"<td>{concluida_atual}</td>\n"
                     html_resumo += f"<td style='{estilo_perc}'>{perc_atual}%</td>\n"
                     html_resumo += "</tr>\n"
@@ -1472,14 +1467,14 @@ try:
                     n_banco = len(_banco_bruto)
                     n_hist = len(_hist_bruto)
                     n_conc_contadas = int(total_concluidas)
+                    n_requisicoes_contadas = int(total_requisicoes)
                     n_abertas_contadas = int(total_abertas)
-                    n_alterados_contadas = int(total_alterados)
                     n_saidos = len(df_saidos) if not df_saidos.empty else 0
                     modo = "histórico acumulado (inclui quem já saiu)" if incluir_saidos else "roster atual (só quem permaneceu)"
                     st.markdown(
                         f"- Modo de contagem: **{modo}**  \n"
-                        f"- **Requisições** no período: `{n_abertas_contadas}`  \n"
-                        f"- **Abertas** (digitação em andamento, foto atual): `{n_alterados_contadas}`  \n"
+                        f"- **Requisições** no período (abertas e/ou concluídas até a data fim): `{n_requisicoes_contadas}`  \n"
+                        f"- **Abertas** (ainda sem Data Admissão dentro do período): `{n_abertas_contadas}`  \n"
                         f"- **Concluídas** no período: `{n_conc_contadas}`  \n"
                         f"- Admitidos no período que **já saíram** do roster: `{n_saidos}` "
                         f"({'incluídos' if incluir_saidos else 'NÃO incluídos'} na conta atual)  \n"
@@ -1491,7 +1486,7 @@ try:
                             "Me diga o nome exato da coluna que eu ajusto."
                         )
 
-                    st.markdown(f"**Vagas contadas como Requisições no período ({n_abertas_contadas}):**")
+                    st.markdown(f"**Vagas contadas como Requisições no período ({n_requisicoes_contadas}):**")
                     if not df_abertas_diag.empty:
                         df_abertas_exib = df_abertas_diag[
                             ['Loja', 'Nome', 'Dept', 'Função', 'Data Abertura', 'Data Admissão', 'Situação']
