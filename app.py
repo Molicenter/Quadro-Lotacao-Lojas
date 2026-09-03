@@ -1402,27 +1402,31 @@ try:
 
                 fig.update_layout(
                     barmode='group',
+                    height=560,
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
                     font=dict(color='#22303C', family="sans-serif"),
                     legend=dict(
-                        orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5,
+                        orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5,
                         font=dict(size=14)
                     ),
                     margin=dict(t=50, b=0, l=0, r=0),
                     yaxis=dict(
-                        showgrid=True, 
-                        gridcolor='rgba(0,0,0,0.06)', 
-                        showticklabels=False, 
+                        showgrid=True,
+                        gridcolor='rgba(0,0,0,0.06)',
+                        showticklabels=False,
                         zeroline=True,
                         zerolinecolor='rgba(0,0,0,0.1)',
                         range=[0, teto_grafico * 1.4]
                     ),
                     xaxis=dict(
                         showgrid=False,
-                        tickfont=dict(size=13, color='#22303C')
+                        tickfont=dict(size=13, color='#22303C'),
+                        tickmode='array',
+                        tickvals=lojas_x,
+                        ticktext=[f"<b>{l}</b>" for l in lojas_x]
                     ),
-                    hovermode="x unified" 
+                    hovermode="x unified"
                 )
 
                 html_resumo = "<div class='tabela-resumo-container'>\n<table class='tabela-resumo'>\n<thead>\n<tr>\n"
@@ -1457,7 +1461,7 @@ try:
                 html_resumo += "</tbody>\n</table>\n</div>"
 
                 st.markdown("<br>", unsafe_allow_html=True)
-                col_tab, col_graf = st.columns([1, 2.5])
+                col_tab, col_graf = st.columns([1, 3.5], gap="small")
                 with col_tab:
                     st.markdown(html_resumo, unsafe_allow_html=True)
                 with col_graf:
