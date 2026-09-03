@@ -551,9 +551,10 @@ st.markdown("""
     .celula-loja { text-align: center !important; font-weight: bold !important; color: #0B3D63 !important; }
     
     /* === ESTILOS EXCLUSIVOS DA TABELA DE RESUMO (RELATÓRIO) === */
-    .tabela-resumo { width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 13px; color: #22303C; }
-    .tabela-resumo th { padding: 10px; background-color: #DCEBF7; color: #22303C; border-bottom: 2px solid #C4D4E0; text-align: center !important; font-weight: 600; }
-    .tabela-resumo td { padding: 10px; border-bottom: 1px solid #D5E0EA; text-align: center !important; vertical-align: middle; }
+    .tabela-resumo-container { display: inline-block; max-width: 100%; overflow-x: auto; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .tabela-resumo { width: auto; table-layout: auto; border-collapse: collapse; font-family: sans-serif; font-size: 13px; color: #22303C; }
+    .tabela-resumo th { padding: 10px 16px; background-color: #DCEBF7; color: #22303C; border-bottom: 2px solid #C4D4E0; text-align: center !important; font-weight: 700; white-space: nowrap; }
+    .tabela-resumo td { padding: 10px 16px; border-bottom: 1px solid #D5E0EA; text-align: center !important; vertical-align: middle; font-weight: 700; white-space: nowrap; }
     .tabela-resumo tr:nth-child(even) { background-color: #F2F6FA; }
     .tabela-resumo tr:nth-child(odd) { background-color: #FFFFFF; }
     .tabela-resumo tbody tr:hover { background-color: #DCEBF7 !important; transition: 0.2s; }
@@ -1364,9 +1365,9 @@ try:
                     name='Requisições',
                     marker_color='#90A4B8',
                     marker_line_width=0,
-                    text=requisicoes_y,
+                    text=[f"<b>{v}</b>" for v in requisicoes_y],
                     textposition='outside',
-                    textfont=dict(color='#22303C', size=13)
+                    textfont=dict(color='#22303C', size=15)
                 ))
 
                 fig.add_trace(go.Bar(
@@ -1374,9 +1375,9 @@ try:
                     name='Abertas',
                     marker_color='#D6006C',
                     marker_line_width=0,
-                    text=abertas_y,
+                    text=[f"<b>{v}</b>" for v in abertas_y],
                     textposition='outside',
-                    textfont=dict(color='#22303C', size=13)
+                    textfont=dict(color='#22303C', size=15)
                 ))
 
                 fig.add_trace(go.Bar(
@@ -1384,16 +1385,16 @@ try:
                     name='Concluídas',
                     marker_color='#0093E9',
                     marker_line_width=0,
-                    text=concluidas_y,
+                    text=[f"<b>{v}</b>" for v in concluidas_y],
                     textposition='outside',
-                    textfont=dict(color='#22303C', size=13)
+                    textfont=dict(color='#22303C', size=15)
                 ))
 
                 teto_grafico = max(requisicoes_y) if requisicoes_y else 1
                 for i, loja in enumerate(lojas_x):
                     fig.add_annotation(
                         x=loja,
-                        y=max(requisicoes_y[i], abertas_y[i], concluidas_y[i]) + (teto_grafico * 0.15),
+                        y=max(requisicoes_y[i], abertas_y[i], concluidas_y[i]) + (teto_grafico * 0.19),
                         text=f"<b>{perc_y[i]}%</b>",
                         showarrow=False,
                         font=dict(color="#E5007D" if perc_y[i] > 0 else "#90A4B8", size=15)
@@ -1415,7 +1416,7 @@ try:
                         showticklabels=False, 
                         zeroline=True,
                         zerolinecolor='rgba(0,0,0,0.1)',
-                        range=[0, teto_grafico * 1.35] 
+                        range=[0, teto_grafico * 1.4]
                     ),
                     xaxis=dict(
                         showgrid=False,
@@ -1424,7 +1425,7 @@ try:
                     hovermode="x unified" 
                 )
 
-                html_resumo = "<div class='tabela-container'>\n<table class='tabela-resumo'>\n<thead>\n<tr>\n"
+                html_resumo = "<div class='tabela-resumo-container'>\n<table class='tabela-resumo'>\n<thead>\n<tr>\n"
                 html_resumo += "<th>Loja</th>\n<th>Requisições</th>\n<th>Abertas</th>\n<th>Concluídas</th>\n<th>%</th>\n"
                 html_resumo += "</tr>\n</thead>\n<tbody>\n"
 
