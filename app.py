@@ -13,6 +13,7 @@ from ql_orcado import (  # <-- VISÃO QL ORÇADO (ORGANOGRAMA)
     obter_orcado_funcao,
     badge_orcado,
 )
+from pdf_quadro import gerar_pdf_quadro  # <-- EXPORTAÇÃO DO QUADRO COMPLETO EM PDF
 
 # =========================================================
 # 🌐 RASTREAMENTO DE SESSÕES ATIVAS EM TEMPO REAL
@@ -1112,8 +1113,13 @@ try:
     )
 
     if st.button("🔄 Atualizar Registros", type="primary"):
-        st.cache_data.clear() 
+        st.cache_data.clear()
         st.rerun()
+
+    # O PDF só é montado quando esta opção está marcada, para não recalcular
+    # o quadro completo a cada interação (clique em card, expander etc.).
+    preparar_pdf = st.checkbox("📄 Preparar PDF do Quadro Completo para download", value=False)
+    pdf_placeholder = st.empty()
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1601,6 +1607,10 @@ try:
     if not departamentos:
         st.warning("Nenhum registro encontrado com dados preenchidos nesta loja/visão.")
 
+    # Acumula a mesma estrutura Departamento -> Função exibida em tela,
+    # para alimentar o botão "Baixar PDF do Quadro Completo" mais abaixo.
+    dados_pdf = []
+
     for dept in departamentos:
         df_dept = df_exibicao[df_exibicao['Dept'] == dept]
         
@@ -1614,6 +1624,11 @@ try:
         real_dept = len(df_real_base[df_real_base['Dept'] == dept])
         info_orcado_dept = badge_orcado(
             obter_orcado_dept(mapa_orcado_dept, mapa_orcado_func, dept), real_dept)
+
+        dados_pdf.append({
+            "dept": dept, "total": total_funcionarios_dept,
+            "info_orcado": info_orcado_dept, "funcoes": [],
+        })
 
         with st.expander(f"🏢 DEPARTAMENTO: {dept} ({total_funcionarios_dept}){info_orcado_dept}", expanded=expander_aberto):
             funcoes = sorted(df_dept['Função'].dropna().unique())
@@ -1647,7 +1662,11 @@ try:
                     df_filtrado = df_funcao[df_funcao['Nome'] == colaborador_final][colunas_selecionadas]
                 else:
                     df_filtrado = df_funcao[colunas_selecionadas]
-                
+
+                dados_pdf[-1]["funcoes"].append({
+                    "funcao": funcao, "info_orcado": info_orcado_func, "df": df_filtrado,
+                })
+
                 colspan_analista = 4 if modo_visao_global else 3
                 
                 html_tabela = f"""
@@ -1711,6 +1730,37 @@ try:
 </div>
 """
                 st.markdown(html_tabela, unsafe_allow_html=True)
+
+    # =========================================================
+    # 📄 BOTÃO: BAIXAR PDF DO QUADRO COMPLETO
+    # =========================================================
+    if dados_pdf and preparar_pdf:
+        try:
+            with st.spinner("Gerando PDF do quadro completo..."):
+                pdf_bytes = gerar_pdf_quadro(
+                    texto_titulo=texto_titulo,
+                    contadores={
+                        "Ativos": ativos_qtd, "Férias": ferias_qtd, "Demitidos": demitidos_qtd,
+                        "Afastados": afastados_qtd, "Alterados": alterados_qtd, "Admitidos": admitidos_qtd,
+                    },
+                    departamentos=dados_pdf,
+                    modo_visao_global=modo_visao_global,
+                    subtitulo_filtro=filtro_atual,
+                    focar_colaborador=colaborador_final if (focar_colaborador and colaborador_final) else None,
+                )
+            agora_br = datetime.now() - timedelta(hours=3)
+            nome_arquivo = f"QL_{str(texto_titulo).replace(' ', '_')}_{agora_br.strftime('%Y%m%d_%H%M')}.pdf"
+            pdf_placeholder.download_button(
+                "📄 Baixar PDF do Quadro Completo",
+                data=pdf_bytes,
+                file_name=nome_arquivo,
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        except Exception as e_pdf:
+            pdf_placeholder.warning(f"⚠️ Não foi possível gerar o PDF agora. Detalhes: {e_pdf}")
+    else:
+        pdf_placeholder.empty()
 
 except Exception as e:
     st.error(f"Erro Geral no Sistema. Detalhes: {e}")
