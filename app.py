@@ -1090,9 +1090,8 @@ try:
     
     focar_colaborador = st.checkbox(f"🔍 Focar visualização apenas no colaborador: {colaborador_final}" if colaborador_final else "🔍 Focar colaborador selecionado", value=False)
     
-    mostrar_relatorio = False
-    if perfil in ["analista", "rh"]:
-        mostrar_relatorio = st.checkbox("📊 Visualizar Relatório de Efetividade (Vagas Abertas vs Concluídas)", value=False)
+    # Liberado pra todos os perfis (antes era só analista/rh)
+    mostrar_relatorio = st.checkbox("📊 Visualizar Relatório de Efetividade (Vagas Abertas vs Concluídas)", value=False)
 
     mostrar_ql_orcado = st.checkbox("📐 Visualizar QL Orçado (Organograma de Funções)", value=False)
     
