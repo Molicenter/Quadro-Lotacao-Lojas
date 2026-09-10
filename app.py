@@ -1323,6 +1323,16 @@ try:
                     lambda x: '🟢 Concluída' if x else '🟡 Em aberto'
                 )
 
+            # Extrato das vagas contadas como CONCLUÍDAS RH no período (Status RH =
+            # "Requisição atendida", mesma população de Requisições/Abertas acima).
+            if not df_rel.empty:
+                df_concluidas_rh_diag = df_rel[df_rel['is_aberta'] & df_rel['is_concluida_rh']].copy()
+            else:
+                df_concluidas_rh_diag = pd.DataFrame()
+            if not df_concluidas_rh_diag.empty:
+                df_concluidas_rh_diag['Data Abertura'] = df_concluidas_rh_diag['Data Abertura'].apply(formatar_data_br)
+                df_concluidas_rh_diag['Data Admissão'] = df_concluidas_rh_diag['Data Admissão'].apply(formatar_data_br)
+
             df_conc_diag = pd.DataFrame(list(conc_registros.values()))
             df_saidos = pd.DataFrame(saidos_registros)
 
@@ -1580,12 +1590,21 @@ try:
                         df_abertas_exib = df_abertas_diag
                     st.dataframe(df_abertas_exib, use_container_width=True, hide_index=True)
 
-                    st.markdown("**Pessoas contadas como admitidas no período:**")
+                    st.markdown(f"**Pessoas contadas como Admitidas DP no período ({n_conc_contadas}):**")
                     if not df_conc_diag.empty:
                         df_conc = df_conc_diag[['Loja', 'Nome Admitido', 'Dept', 'Função', 'Data Admissão', 'Situação']].sort_values(['Loja', 'Nome Admitido'])
                     else:
                         df_conc = df_conc_diag
                     st.dataframe(df_conc, use_container_width=True, hide_index=True)
+
+                    st.markdown(f"**Vagas contadas como Admitidas RH no período ({n_conc_rh_contadas}):**")
+                    if not df_concluidas_rh_diag.empty:
+                        df_conc_rh_exib = df_concluidas_rh_diag[
+                            ['Loja', 'Nome', 'Dept', 'Função', 'Status RH', 'Data Abertura', 'Data Admissão']
+                        ].sort_values(['Loja', 'Nome'])
+                    else:
+                        df_conc_rh_exib = df_concluidas_rh_diag
+                    st.dataframe(df_conc_rh_exib, use_container_width=True, hide_index=True)
 
                     if n_saidos:
                         st.markdown(
