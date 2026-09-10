@@ -1551,9 +1551,9 @@ try:
                             st.rerun()
 
                 st.markdown("<br>", unsafe_allow_html=True)
-                st.markdown(html_resumo, unsafe_allow_html=True)
-                st.markdown("<br>", unsafe_allow_html=True)
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align:center'>{html_resumo}</div>", unsafe_allow_html=True)
 
                 # 🔍 Painel de diagnóstico (ajuda a reconciliar os números)
                 with st.expander("🔍 Diagnóstico da contagem (conferência)"):
