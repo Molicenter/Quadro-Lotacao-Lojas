@@ -88,6 +88,36 @@ def salvar_fechamento(supabase, data_inicio_filtro: date, data_fim_filtro: date,
         print(f"[Fechamento] Erro ao salvar snapshot: {e}")
 
 
+def sobrescrever_concluidas_rh_snapshot(supabase, data_inicio_filtro: date, data_fim_filtro: date, concluidas_rh_por_loja):
+    """Atualiza SÓ a coluna concluidas_rh de um snapshot já congelado, sem
+    tocar em requisicoes/abertas/concluidas_dp. Serve pra preencher
+    Concluídas RH de períodos que foram congelados antes dessa métrica
+    existir (ficaram com 0). O valor vem do estado ATUAL do banco — se o
+    período já estava fechado há um tempo, pode carregar um pouco do mesmo
+    decaimento de Requisições/Abertas, mas ainda assim é bem melhor do que
+    ficar zerado pra sempre.
+
+    concluidas_rh_por_loja: DataFrame com colunas 'Loja' e 'Concluídas RH'
+    (o mesmo que o app já calcula ao vivo antes de decidir se usa o
+    snapshot ou não). Retorna a qtde de lojas atualizadas."""
+    atualizados = 0
+    for _, linha in concluidas_rh_por_loja.iterrows():
+        try:
+            supabase.table("ql_fechamentos_periodo").update(
+                {"concluidas_rh": int(linha["Concluídas RH"])}
+            ).eq("data_inicio", data_inicio_filtro.isoformat()) \
+             .eq("data_fim", data_fim_filtro.isoformat()) \
+             .eq("loja", int(linha["Loja"])) \
+             .execute()
+            atualizados += 1
+        except Exception as e:
+            print(f"[Fechamento] Erro ao atualizar concluidas_rh (loja {linha.get('Loja')}): {e}")
+    if atualizados:
+        print(f"[Fechamento] Concluídas RH recalculada em {atualizados} loja(s) "
+              f"para {data_inicio_filtro}–{data_fim_filtro}.")
+    return atualizados
+
+
 def obter_relatorio_periodo(supabase, data_inicio_filtro: date, data_fim_filtro: date, calcular_ao_vivo):
     """Ponto único de entrada para o relatório de período.
 
