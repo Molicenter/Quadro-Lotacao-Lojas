@@ -14,6 +14,7 @@ from ql_orcado import (  # <-- VISÃO QL ORÇADO (ORGANOGRAMA)
     badge_orcado,
 )
 from pdf_quadro import gerar_pdf_quadro  # <-- EXPORTAÇÃO DO QUADRO COMPLETO EM PDF
+from ql_fechamento_periodo import obter_relatorio_periodo  # <-- CONGELAMENTO DE PERÍODOS FECHADOS
 
 # =========================================================
 # 🌐 RASTREAMENTO DE SESSÕES ATIVAS EM TEMPO REAL
@@ -1339,16 +1340,31 @@ try:
                     .groupby('Loja').size().reset_index(name='Abertas')
                 )
 
-                df_relatorio = pd.merge(requisicoes_por_loja, concluidas_por_loja, on='Loja', how='outer')
-                df_relatorio = pd.merge(df_relatorio, pendentes_por_loja, on='Loja', how='outer').fillna(0)
-                df_relatorio['Requisições'] = df_relatorio['Requisições'].astype(int)
-                df_relatorio['Concluídas'] = df_relatorio['Concluídas'].astype(int)
-                df_relatorio['Abertas'] = df_relatorio['Abertas'].astype(int)
-                df_relatorio = df_relatorio.sort_values('Loja').reset_index(drop=True)
-                df_relatorio['%'] = df_relatorio.apply(
-                    lambda r: int(round(r['Concluídas'] / r['Requisições'] * 100)) if r['Requisições'] > 0 else 0,
-                    axis=1
-                )
+                def _montar_df_relatorio_ao_vivo():
+                    df = pd.merge(requisicoes_por_loja, concluidas_por_loja, on='Loja', how='outer')
+                    df = pd.merge(df, pendentes_por_loja, on='Loja', how='outer').fillna(0)
+                    df['Requisições'] = df['Requisições'].astype(int)
+                    df['Concluídas'] = df['Concluídas'].astype(int)
+                    df['Abertas'] = df['Abertas'].astype(int)
+                    df = df.sort_values('Loja').reset_index(drop=True)
+                    df['%'] = df.apply(
+                        lambda r: int(round(r['Concluídas'] / r['Requisições'] * 100)) if r['Requisições'] > 0 else 0,
+                        axis=1
+                    )
+                    return df
+
+                # Congela Requisições/Abertas de períodos já fechados (evita o
+                # "decaimento" causado pela deduplicação por Loja+Nome em
+                # combinar_banco_e_historico). Só usa/gera snapshot com o toggle
+                # "incluir admitidos que já saíram" DESLIGADO — é o modo padrão e
+                # é o número "oficial" de fechamento. Com o toggle ligado, ou com
+                # o período ainda em andamento, sempre calcula ao vivo.
+                if not incluir_saidos:
+                    df_relatorio, veio_de_snapshot = obter_relatorio_periodo(
+                        supabase, data_inicio_filtro, data_fim_filtro, _montar_df_relatorio_ao_vivo
+                    )
+                else:
+                    df_relatorio, veio_de_snapshot = _montar_df_relatorio_ao_vivo(), False
 
                 total_requisicoes = df_relatorio['Requisições'].sum()
                 total_concluidas = df_relatorio['Concluídas'].sum()
@@ -1465,6 +1481,9 @@ try:
                     html_resumo += "</tr>\n"
                 
                 html_resumo += "</tbody>\n</table>\n</div>"
+
+                if veio_de_snapshot:
+                    st.caption("📌 Período fechado — Requisições/Abertas congeladas no primeiro fechamento gerado.")
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 col_tab, col_graf = st.columns([1, 3.5], gap="small")
