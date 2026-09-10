@@ -14,7 +14,7 @@ from ql_orcado import (  # <-- VISÃO QL ORÇADO (ORGANOGRAMA)
     badge_orcado,
 )
 from pdf_quadro import gerar_pdf_quadro  # <-- EXPORTAÇÃO DO QUADRO COMPLETO EM PDF
-from ql_fechamento_periodo import obter_relatorio_periodo  # <-- CONGELAMENTO DE PERÍODOS FECHADOS
+from ql_fechamento_periodo import obter_relatorio_periodo, sobrescrever_concluidas_rh_snapshot  # <-- CONGELAMENTO DE PERÍODOS FECHADOS
 
 # =========================================================
 # 🌐 RASTREAMENTO DE SESSÕES ATIVAS EM TEMPO REAL
@@ -1520,6 +1520,25 @@ try:
 
                 if veio_de_snapshot:
                     st.caption("📌 Período fechado — Requisições/Abertas/Concluídas RH congeladas no primeiro fechamento gerado.")
+
+                    # Snapshots congelados ANTES da métrica "Concluídas RH" existir ficaram
+                    # com 0 nessa coluna. Se o cálculo ao vivo (de cima) já acha algo pra
+                    # esse período, oferece recalcular só essa coluna do snapshot — sem
+                    # mexer em Requisições/Abertas/Concluídas DP, que continuam congeladas.
+                    rh_congelado_zerado = int(df_relatorio['Concluídas RH'].sum()) == 0
+                    rh_ao_vivo_total = int(concluidas_rh_por_loja['Concluídas RH'].sum()) if not concluidas_rh_por_loja.empty else 0
+                    if rh_congelado_zerado and rh_ao_vivo_total > 0:
+                        st.caption(
+                            "ℹ️ Concluídas RH deste período está zerada porque foi congelada antes "
+                            "dessa métrica existir. O banco hoje indica um valor possível — "
+                            "clique abaixo pra preencher (só essa coluna; o resto continua congelado)."
+                        )
+                        if st.button("🔁 Recalcular Concluídas RH deste período", key="btn_recalc_conc_rh"):
+                            with st.spinner("⏳ Atualizando Concluídas RH do snapshot..."):
+                                sobrescrever_concluidas_rh_snapshot(
+                                    supabase, data_inicio_filtro, data_fim_filtro, concluidas_rh_por_loja
+                                )
+                            st.rerun()
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.markdown(html_resumo, unsafe_allow_html=True)
