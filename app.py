@@ -1186,7 +1186,8 @@ try:
                     datas_ad_invalidas += 1
 
                 tem_admissao = d_ad is not None
-                # Concluída = admitida dentro do período (>= início e <= fim)
+                # Concluída DP = admitida dentro do período (>= início e <= fim), conforme
+                # a planilha (Banco QL.xlsx) / ledger — definição oficial de admissão.
                 is_concluida = tem_admissao and (data_inicio_filtro <= d_ad <= data_fim_filtro)
                 # Aberta = estava aberta durante o período:
                 #   - foi aberta até a data fim, E
@@ -1197,6 +1198,12 @@ try:
                 nao_fechada_antes = (not tem_admissao) or (d_ad >= data_inicio_filtro)
                 is_aberta = (aberta_ate_fim and nao_fechada_antes) or is_concluida
 
+                # Concluída RH = Status RH = "Requisição atendida", dentro da mesma
+                # população de Requisições/Abertas (etapa anterior à admissão confirmada
+                # na planilha, que é quem define a Concluída DP acima).
+                status_rh_raw = r.get('Status RH')
+                is_concluida_rh = str(status_rh_raw or '').strip().upper() == 'REQUISIÇÃO ATENDIDA'
+
                 linhas_rel.append({
                     'Loja': loja,
                     'Nome': str(r.get('Nome', '')).title(),
@@ -1204,8 +1211,10 @@ try:
                     'Função': limpar_campo(r.get('Função'), '-'),
                     'Data Abertura': r.get('Data Abertura'),
                     'Data Admissão': raw_ad,
+                    'Status RH': limpar_campo(status_rh_raw, '-'),
                     'is_aberta': is_aberta,
                     'is_concluida': is_concluida,
+                    'is_concluida_rh': is_concluida_rh,
                 })
 
             df_rel = pd.DataFrame(linhas_rel)
@@ -1340,15 +1349,25 @@ try:
                     .groupby('Loja').size().reset_index(name='Abertas')
                 )
 
+                # Concluídas RH = requisições da população acima com Status RH =
+                # "Requisição atendida" (etapa anterior à admissão confirmada na planilha).
+                concluidas_rh_por_loja = (
+                    df_rel[df_rel['is_aberta'] & df_rel['is_concluida_rh']]
+                    .groupby('Loja').size().reset_index(name='Concluídas RH')
+                )
+
                 def _montar_df_relatorio_ao_vivo():
                     df = pd.merge(requisicoes_por_loja, concluidas_por_loja, on='Loja', how='outer')
-                    df = pd.merge(df, pendentes_por_loja, on='Loja', how='outer').fillna(0)
+                    df = pd.merge(df, pendentes_por_loja, on='Loja', how='outer')
+                    df = pd.merge(df, concluidas_rh_por_loja, on='Loja', how='outer').fillna(0)
                     df['Requisições'] = df['Requisições'].astype(int)
-                    df['Concluídas'] = df['Concluídas'].astype(int)
+                    df['Concluídas DP'] = df['Concluídas'].astype(int)
+                    df['Concluídas RH'] = df['Concluídas RH'].astype(int)
                     df['Abertas'] = df['Abertas'].astype(int)
+                    df = df.drop(columns=['Concluídas'])
                     df = df.sort_values('Loja').reset_index(drop=True)
                     df['%'] = df.apply(
-                        lambda r: int(round(r['Concluídas'] / r['Requisições'] * 100)) if r['Requisições'] > 0 else 0,
+                        lambda r: int(round(r['Concluídas DP'] / r['Requisições'] * 100)) if r['Requisições'] > 0 else 0,
                         axis=1
                     )
                     return df
@@ -1367,7 +1386,8 @@ try:
                     df_relatorio, veio_de_snapshot = _montar_df_relatorio_ao_vivo(), False
 
                 total_requisicoes = df_relatorio['Requisições'].sum()
-                total_concluidas = df_relatorio['Concluídas'].sum()
+                total_concluidas = df_relatorio['Concluídas DP'].sum()
+                total_concluidas_rh = df_relatorio['Concluídas RH'].sum()
                 total_abertas = df_relatorio['Abertas'].sum()
                 perc_total = int(round((total_concluidas / total_requisicoes * 100) if total_requisicoes > 0 else 0, 0))
 
@@ -1377,7 +1397,8 @@ try:
                 lojas_x = df_exibicao_rel['Loja'].tolist() + ["Total"]
                 requisicoes_y = df_exibicao_rel['Requisições'].tolist() + [total_requisicoes]
                 abertas_y = df_exibicao_rel['Abertas'].tolist() + [total_abertas]
-                concluidas_y = df_exibicao_rel['Concluídas'].tolist() + [total_concluidas]
+                concluidas_y = df_exibicao_rel['Concluídas DP'].tolist() + [total_concluidas]
+                concluidas_rh_y = df_exibicao_rel['Concluídas RH'].tolist() + [total_concluidas_rh]
                 perc_y = df_exibicao_rel['%'].tolist() + [perc_total]
 
                 fig = go.Figure()
@@ -1404,10 +1425,20 @@ try:
 
                 fig.add_trace(go.Bar(
                     x=lojas_x, y=concluidas_y,
-                    name='Concluídas',
+                    name='Concluídas DP',
                     marker_color='#0093E9',
                     marker_line_width=0,
                     text=[f"<b>{v}</b>" for v in concluidas_y],
+                    textposition='outside',
+                    textfont=dict(color='#22303C', size=15)
+                ))
+
+                fig.add_trace(go.Bar(
+                    x=lojas_x, y=concluidas_rh_y,
+                    name='Concluídas RH',
+                    marker_color='#00A389',
+                    marker_line_width=0,
+                    text=[f"<b>{v}</b>" for v in concluidas_rh_y],
                     textposition='outside',
                     textfont=dict(color='#22303C', size=15)
                 ))
@@ -1416,7 +1447,7 @@ try:
                 for i, loja in enumerate(lojas_x):
                     fig.add_annotation(
                         x=loja,
-                        y=max(requisicoes_y[i], abertas_y[i], concluidas_y[i]) + (teto_grafico * 0.19),
+                        y=max(requisicoes_y[i], abertas_y[i], concluidas_y[i], concluidas_rh_y[i]) + (teto_grafico * 0.19),
                         text=f"<b>{perc_y[i]}%</b>",
                         showarrow=False,
                         font=dict(color="#E5007D" if perc_y[i] > 0 else "#90A4B8", size=15)
@@ -1452,7 +1483,10 @@ try:
                 )
 
                 html_resumo = "<div class='tabela-resumo-container'>\n<table class='tabela-resumo'>\n<thead>\n<tr>\n"
-                html_resumo += "<th>Loja</th>\n<th>Requisições</th>\n<th>Abertas</th>\n<th>Concluídas</th>\n<th>%</th>\n"
+                html_resumo += (
+                    "<th>Loja</th>\n<th>Requisições</th>\n<th>Abertas</th>\n"
+                    "<th>Concluídas DP</th>\n<th>Concluídas RH</th>\n<th>%</th>\n"
+                )
                 html_resumo += "</tr>\n</thead>\n<tbody>\n"
 
                 for i in range(len(lojas_x)):
@@ -1460,6 +1494,7 @@ try:
                     requisicoes_atual = requisicoes_y[i]
                     abertas_atual = abertas_y[i]
                     concluida_atual = concluidas_y[i]
+                    concluida_rh_atual = concluidas_rh_y[i]
                     perc_atual = perc_y[i]
 
                     if perc_atual >= 50:
@@ -1477,26 +1512,26 @@ try:
                     html_resumo += f"<td>{requisicoes_atual}</td>\n"
                     html_resumo += f"<td>{abertas_atual}</td>\n"
                     html_resumo += f"<td>{concluida_atual}</td>\n"
+                    html_resumo += f"<td>{concluida_rh_atual}</td>\n"
                     html_resumo += f"<td style='{estilo_perc}'>{perc_atual}%</td>\n"
                     html_resumo += "</tr>\n"
-                
+
                 html_resumo += "</tbody>\n</table>\n</div>"
 
                 if veio_de_snapshot:
-                    st.caption("📌 Período fechado — Requisições/Abertas congeladas no primeiro fechamento gerado.")
+                    st.caption("📌 Período fechado — Requisições/Abertas/Concluídas RH congeladas no primeiro fechamento gerado.")
 
                 st.markdown("<br>", unsafe_allow_html=True)
-                col_tab, col_graf = st.columns([1, 3.5], gap="small")
-                with col_tab:
-                    st.markdown(html_resumo, unsafe_allow_html=True)
-                with col_graf:
-                    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+                st.markdown(html_resumo, unsafe_allow_html=True)
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
                 # 🔍 Painel de diagnóstico (ajuda a reconciliar os números)
                 with st.expander("🔍 Diagnóstico da contagem (conferência)"):
                     n_banco = len(_banco_bruto)
                     n_hist = len(_hist_bruto)
                     n_conc_contadas = int(total_concluidas)
+                    n_conc_rh_contadas = int(total_concluidas_rh)
                     n_requisicoes_contadas = int(total_requisicoes)
                     n_abertas_contadas = int(total_abertas)
                     n_saidos = len(df_saidos) if not df_saidos.empty else 0
@@ -1505,7 +1540,8 @@ try:
                         f"- Modo de contagem: **{modo}**  \n"
                         f"- **Requisições** no período (abertas e/ou concluídas até a data fim): `{n_requisicoes_contadas}`  \n"
                         f"- **Abertas** (ainda sem Data Admissão dentro do período): `{n_abertas_contadas}`  \n"
-                        f"- **Concluídas** no período: `{n_conc_contadas}`  \n"
+                        f"- **Concluídas DP** (admitidos conforme a planilha/ledger) no período: `{n_conc_contadas}`  \n"
+                        f"- **Concluídas RH** (Status RH = Requisição atendida) no período: `{n_conc_rh_contadas}`  \n"
                         f"- Admitidos no período que **já saíram** do roster: `{n_saidos}` "
                         f"({'incluídos' if incluir_saidos else 'NÃO incluídos'} na conta atual)  \n"
                         f"- Linhas lidas do ql_banco: `{n_banco}` | ql_historico: `{n_hist}`"
