@@ -1622,8 +1622,55 @@ try:
                             df_saidos[['Loja', 'Nome Admitido', 'Dept', 'Função', 'Data Admissão']].sort_values(['Loja', 'Nome Admitido']),
                             use_container_width=True, hide_index=True
                         )
-        
-        st.markdown("---") 
+
+                    # 🔍 Conferência pontual: por que o card "Alterados" (topo da tela,
+                    # sem filtro de período) pode ter uma contagem diferente de "Abertas"
+                    # deste relatório (com período). Compara por (Loja, Nome normalizado)
+                    # e mostra exatamente quem está de um lado e não do outro.
+                    st.markdown("---")
+                    st.markdown("**🔍 Diferença entre \"Alterados\" (card, sem período) e \"Abertas\" (este relatório)**")
+                    if 'Requisicao_Concluida' in df_loja.columns:
+                        df_alt_cmp = df_loja[(df_loja['Possui_Alteracao_Sheets'] == True) & (~df_loja['Requisicao_Concluida'])]
+                        set_alterados = set(
+                            (int(l), _norm_nome(n)) for l, n in zip(df_alt_cmp['Loja'], df_alt_cmp['Nome'])
+                        )
+                    else:
+                        set_alterados = set()
+
+                    df_abertas_cmp = df_rel[df_rel['is_aberta'] & ~df_rel['is_concluida_rh']] if not df_rel.empty else df_rel
+                    if not df_abertas_cmp.empty:
+                        set_abertas = set(
+                            (int(l), _norm_nome(n)) for l, n in zip(df_abertas_cmp['Loja'], df_abertas_cmp['Nome'])
+                        )
+                    else:
+                        set_abertas = set()
+
+                    so_alterados = set_alterados - set_abertas
+                    so_abertas = set_abertas - set_alterados
+
+                    st.markdown(
+                        f"- Alterados (card): `{len(set_alterados)}` | Abertas (este relatório): `{len(set_abertas)}`  \n"
+                        f"- Só aparece em Alterados (não conta como Abertas no relatório): `{len(so_alterados)}`  \n"
+                        f"- Só aparece em Abertas (não conta como Alterados no card): `{len(so_abertas)}`"
+                    )
+                    if so_alterados:
+                        st.markdown("**Registros só em Alterados** (existem no quadro atual, mas não bateram no relatório — "
+                                     "pode ser porque a Data Abertura ficou fora do período escolhido, ou porque a linha "
+                                     "não existe em `ql_banco`/`ql_historico` com esse Nome exato):")
+                        st.dataframe(
+                            pd.DataFrame(sorted(so_alterados), columns=['Loja', 'Nome (normalizado)']),
+                            use_container_width=True, hide_index=True
+                        )
+                    if so_abertas:
+                        st.markdown("**Registros só em Abertas** (contam no relatório do período, mas não aparecem no "
+                                     "card Alterados — normalmente porque já foram arquivados em `ql_historico` e "
+                                     "saíram do quadro operacional atual):")
+                        st.dataframe(
+                            pd.DataFrame(sorted(so_abertas), columns=['Loja', 'Nome (normalizado)']),
+                            use_container_width=True, hide_index=True
+                        )
+
+        st.markdown("---")
 
     # =========================================================
     # 📐 VISÃO QL ORÇADO (ORGANOGRAMA) - módulo ql_orcado.py
