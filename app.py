@@ -1318,8 +1318,10 @@ try:
             if not df_abertas_diag.empty:
                 df_abertas_diag['Data Abertura'] = df_abertas_diag['Data Abertura'].apply(formatar_data_br)
                 df_abertas_diag['Data Admissão'] = df_abertas_diag['Data Admissão'].apply(formatar_data_br)
-                df_abertas_diag['Situação'] = df_abertas_diag['is_concluida'].apply(
-                    lambda x: '🟢 Concluída' if x else '🟡 Em aberto'
+                df_abertas_diag['Situação'] = df_abertas_diag.apply(
+                    lambda r: '🟢 Concluída RH' if r['is_concluida_rh']
+                    else ('🔵 Admitida DP (sem RH)' if r['is_concluida'] else '🟡 Em aberto'),
+                    axis=1
                 )
 
             # Extrato das vagas contadas como CONCLUÍDAS RH no período (Status RH =
@@ -1351,10 +1353,15 @@ try:
                 else:
                     concluidas_por_loja = pd.DataFrame(columns=['Loja', 'Concluídas'])
 
-                # Abertas = subconjunto das Requisições que AINDA não finalizaram o processo,
-                # ou seja, ainda não têm Data Admissão preenchida dentro do período.
+                # Abertas = subconjunto das Requisições que AINDA não têm Status RH =
+                # "Requisição atendida" — ou seja, o complemento exato de Concluídas RH
+                # dentro de Requisições (Abertas + Concluídas RH = Requisições sempre).
+                # Não usa is_concluida (DP) aqui de propósito: uma vaga pode já estar
+                # "Requisição atendida" no RH sem ainda ter Data Admissão preenchida —
+                # se Abertas excluísse só quem tem Data Admissão, essa vaga contava em
+                # dobro (em Abertas E em Concluídas RH), e a soma não batia com Requisições.
                 pendentes_por_loja = (
-                    df_rel[df_rel['is_aberta'] & ~df_rel['is_concluida']]
+                    df_rel[df_rel['is_aberta'] & ~df_rel['is_concluida_rh']]
                     .groupby('Loja').size().reset_index(name='Abertas')
                 )
 
@@ -1567,7 +1574,7 @@ try:
                     st.markdown(
                         f"- Modo de contagem: **{modo}**  \n"
                         f"- **Requisições** no período (abertas e/ou concluídas até a data fim): `{n_requisicoes_contadas}`  \n"
-                        f"- **Abertas** (ainda sem Data Admissão dentro do período): `{n_abertas_contadas}`  \n"
+                        f"- **Abertas** (ainda sem Status RH = Requisição atendida): `{n_abertas_contadas}`  \n"
                         f"- **Concluídas DP** (admitidos conforme a planilha/ledger) no período: `{n_conc_contadas}`  \n"
                         f"- **Concluídas RH** (Status RH = Requisição atendida) no período: `{n_conc_rh_contadas}`  \n"
                         f"- Admitidos no período que **já saíram** do roster: `{n_saidos}` "
