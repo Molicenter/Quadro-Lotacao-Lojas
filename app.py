@@ -45,13 +45,14 @@ supabase = init_supabase()
 
 # Função auxiliar para higienizar strings nulas vindas do Pandas/Supabase
 def requisicao_atendida_com_admissao(df):
-    """Máscara: linhas com Status RH = 'Requisição atendida' E Data Admissão preenchida
-    (qualquer valor). Essas já concluíram a última etapa e não devem contar como
-    'Alterados' — nem no card, nem no filtro, nem no relatório de efetividade."""
+    """Máscara: linhas com Status RH = 'Requisição atendida'. Essas já concluíram
+    a etapa do RH e não devem contar como 'Alterados' — nem no card, nem no
+    filtro. Alinhado (set/2026) com o mesmo critério de 'Concluídas RH' do
+    Relatório de Efetividade: olha só o Status RH, sem exigir Data Admissão
+    junto (uma vaga pode estar 'Requisição atendida' antes da Data Admissão
+    ser preenchida — antes isso fazia ela contar como Alterada ainda)."""
     status = df.get('Status RH', pd.Series("-", index=df.index)).astype(str).str.strip().str.upper()
-    data_ad = df.get('Data Admissão', pd.Series("-", index=df.index)).astype(str).str.strip().str.upper()
-    sem_data = data_ad.isin(['-', '', 'NAN', 'NONE', 'NULL', 'NAT'])
-    return status.eq('REQUISIÇÃO ATENDIDA') & (~sem_data)
+    return status.eq('REQUISIÇÃO ATENDIDA')
 
 def limpar_campo(valor, padrao="-"):
     if pd.isna(valor):
