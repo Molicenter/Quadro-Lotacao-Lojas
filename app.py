@@ -1131,6 +1131,11 @@ try:
         st.markdown("### 📅 Análise de Preenchimento por Período de Abertura")
         _agora_br = datetime.now() - timedelta(hours=3)  # Streamlit Cloud roda em UTC; Brasília = UTC-3
         st.caption(f"Relatório gerado em {_agora_br.strftime('%d/%m/%Y às %H:%M')}")
+        # 🔧 Marcador de versão — se essa linha NÃO aparecer na tela, o app em
+        # produção ainda está rodando um app.py antigo (o deploy/push/reboot
+        # não pegou o arquivo novo). Serve só pra conferência, pode remover
+        # depois que confirmar que está tudo sincronizado.
+        st.caption("🔧 build app.py: 2026-09-11-v3 (com comparação Alterados × Abertas no diagnóstico)")
         
         col_d1, col_d2, col_d3 = st.columns([1, 1, 3])
         with col_d1:
