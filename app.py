@@ -1135,7 +1135,7 @@ try:
         # produção ainda está rodando um app.py antigo (o deploy/push/reboot
         # não pegou o arquivo novo). Serve só pra conferência, pode remover
         # depois que confirmar que está tudo sincronizado.
-        st.caption("🔧 build app.py: 2026-09-11-v3 (com comparação Alterados × Abertas no diagnóstico)")
+        st.caption("🔧 build app.py: 2026-10-02-v1 (% = Concluídas RH / Requisições; RH vale pela Data Admissão)")
         
         col_d1, col_d2, col_d3 = st.columns([1, 1, 3])
         with col_d1:
@@ -1203,11 +1203,15 @@ try:
                 nao_fechada_antes = (not tem_admissao) or (d_ad >= data_inicio_filtro)
                 is_aberta = (aberta_ate_fim and nao_fechada_antes) or is_concluida
 
-                # Concluída RH = Status RH = "Requisição atendida", dentro da mesma
-                # população de Requisições/Abertas (etapa anterior à admissão confirmada
-                # na planilha, que é quem define a Concluída DP acima).
+                # Concluída RH = Status RH = "Requisição atendida" E Data Admissão
+                # (a data alocada pelo RH) DENTRO do período. Regra out/2026: a
+                # conclusão vale pela data de admissão, não pelo dia em que o RH
+                # marcou "atendida" — ex.: marcou em 30/09 com admissão 05/10 →
+                # conta em OUTUBRO; em setembro essa vaga segue como Aberta.
+                # "Atendida" sem Data Admissão continua como Aberta (pendente de data).
                 status_rh_raw = r.get('Status RH')
-                is_concluida_rh = str(status_rh_raw or '').strip().upper() == 'REQUISIÇÃO ATENDIDA'
+                status_atendida = str(status_rh_raw or '').strip().upper() == 'REQUISIÇÃO ATENDIDA'
+                is_concluida_rh = status_atendida and tem_admissao and (data_inicio_filtro <= d_ad <= data_fim_filtro)
 
                 linhas_rel.append({
                     'Loja': loja,
@@ -1220,6 +1224,8 @@ try:
                     'is_aberta': is_aberta,
                     'is_concluida': is_concluida,
                     'is_concluida_rh': is_concluida_rh,
+                    'atendida_sem_data': status_atendida and not tem_admissao,
+                    'atendida_fora_periodo': status_atendida and tem_admissao and not is_concluida_rh,
                 })
 
             df_rel = pd.DataFrame(linhas_rel)
@@ -1326,7 +1332,9 @@ try:
                 df_abertas_diag['Data Admissão'] = df_abertas_diag['Data Admissão'].apply(formatar_data_br)
                 df_abertas_diag['Situação'] = df_abertas_diag.apply(
                     lambda r: '🟢 Concluída RH' if r['is_concluida_rh']
-                    else ('🔵 Admitida DP (sem RH)' if r['is_concluida'] else '🟡 Em aberto'),
+                    else ('🟠 Atendida — admissão após o período' if r['atendida_fora_periodo']
+                    else ('🟠 Atendida sem Data Admissão' if r['atendida_sem_data']
+                    else ('🔵 Admitida DP (sem RH)' if r['is_concluida'] else '🟡 Em aberto'))),
                     axis=1
                 )
 
@@ -1388,8 +1396,9 @@ try:
                     df['Abertas'] = df['Abertas'].astype(int)
                     df = df.drop(columns=['Concluídas'])
                     df = df.sort_values('Loja').reset_index(drop=True)
+                    # % = Concluídas RH / Requisições (out/2026; antes era Concluídas DP)
                     df['%'] = df.apply(
-                        lambda r: int(round(r['Concluídas DP'] / r['Requisições'] * 100)) if r['Requisições'] > 0 else 0,
+                        lambda r: int(round(r['Concluídas RH'] / r['Requisições'] * 100)) if r['Requisições'] > 0 else 0,
                         axis=1
                     )
                     return df
@@ -1411,7 +1420,7 @@ try:
                 total_concluidas = df_relatorio['Concluídas DP'].sum()
                 total_concluidas_rh = df_relatorio['Concluídas RH'].sum()
                 total_abertas = df_relatorio['Abertas'].sum()
-                perc_total = int(round((total_concluidas / total_requisicoes * 100) if total_requisicoes > 0 else 0, 0))
+                perc_total = int(round((total_concluidas_rh / total_requisicoes * 100) if total_requisicoes > 0 else 0, 0))
 
                 df_exibicao_rel = df_relatorio.copy()
                 df_exibicao_rel['Loja'] = df_exibicao_rel['Loja'].apply(lambda x: f"Loja {int(x):02d}")
@@ -1547,18 +1556,25 @@ try:
                     # com 0 nessa coluna. Se o cálculo ao vivo (de cima) já acha algo pra
                     # esse período, oferece recalcular só essa coluna do snapshot — sem
                     # mexer em Requisições/Abertas/Concluídas DP, que continuam congeladas.
-                    rh_congelado_zerado = int(df_relatorio['Concluídas RH'].sum()) == 0
+                    # Também cobre a mudança de regra de out/2026 (Concluída RH passou a
+                    # valer pela Data Admissão): snapshots antigos podem divergir.
+                    rh_congelado_total = int(df_relatorio['Concluídas RH'].sum())
                     rh_ao_vivo_total = int(concluidas_rh_por_loja['Concluídas RH'].sum()) if not concluidas_rh_por_loja.empty else 0
-                    if rh_congelado_zerado and rh_ao_vivo_total > 0:
+                    if rh_congelado_total != rh_ao_vivo_total:
                         st.caption(
-                            "ℹ️ Concluídas RH deste período está zerada porque foi congelada antes "
-                            "dessa métrica existir. O banco hoje indica um valor possível — "
-                            "clique abaixo pra preencher (só essa coluna; o resto continua congelado)."
+                            f"ℹ️ Concluídas RH congelada neste período = {rh_congelado_total}, mas pela regra "
+                            f"atual (vale a Data Admissão) daria {rh_ao_vivo_total}. Clique abaixo pra atualizar "
+                            "só essa coluna (Requisições/Abertas/Concluídas DP continuam congeladas)."
                         )
                         if st.button("🔁 Recalcular Concluídas RH deste período", key="btn_recalc_conc_rh"):
                             with st.spinner("⏳ Atualizando Concluídas RH do snapshot..."):
+                                # Inclui TODAS as lojas do snapshot (lojas sem Concluída RH
+                                # pela regra nova precisam ir pra 0, não manter o valor antigo).
+                                _rh_todas = df_relatorio[['Loja']].merge(
+                                    concluidas_rh_por_loja, on='Loja', how='left'
+                                ).fillna({'Concluídas RH': 0})
                                 sobrescrever_concluidas_rh_snapshot(
-                                    supabase, data_inicio_filtro, data_fim_filtro, concluidas_rh_por_loja
+                                    supabase, data_inicio_filtro, data_fim_filtro, _rh_todas
                                 )
                             st.rerun()
 
@@ -1580,9 +1596,9 @@ try:
                     st.markdown(
                         f"- Modo de contagem: **{modo}**  \n"
                         f"- **Requisições** no período (abertas e/ou concluídas até a data fim): `{n_requisicoes_contadas}`  \n"
-                        f"- **Abertas** (ainda sem Status RH = Requisição atendida): `{n_abertas_contadas}`  \n"
+                        f"- **Abertas** (sem Requisição atendida com admissão no período): `{n_abertas_contadas}`  \n"
                         f"- **Concluídas DP** (admitidos conforme a planilha/ledger) no período: `{n_conc_contadas}`  \n"
-                        f"- **Concluídas RH** (Status RH = Requisição atendida) no período: `{n_conc_rh_contadas}`  \n"
+                        f"- **Concluídas RH** (Requisição atendida com Data Admissão no período) — base do %: `{n_conc_rh_contadas}`  \n"
                         f"- Admitidos no período que **já saíram** do roster: `{n_saidos}` "
                         f"({'incluídos' if incluir_saidos else 'NÃO incluídos'} na conta atual)  \n"
                         f"- Linhas lidas do ql_banco: `{n_banco}` | ql_historico: `{n_hist}`"
