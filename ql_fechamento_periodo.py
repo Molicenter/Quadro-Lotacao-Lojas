@@ -145,7 +145,7 @@ def obter_relatorio_periodo(supabase, data_inicio_filtro: date, data_fim_filtro:
             {"Loja": loja, **valores} for loja, valores in salvo.items()
         ])
         df["%"] = df.apply(
-            lambda r: int(round(r["Concluídas DP"] / r["Requisições"] * 100))
+            lambda r: int(round(r["Concluídas RH"] / r["Requisições"] * 100))
             if r["Requisições"] > 0 else 0,
             axis=1,
         )
