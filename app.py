@@ -1131,11 +1131,6 @@ try:
         st.markdown("### 📅 Análise de Preenchimento por Período de Abertura")
         _agora_br = datetime.now() - timedelta(hours=3)  # Streamlit Cloud roda em UTC; Brasília = UTC-3
         st.caption(f"Relatório gerado em {_agora_br.strftime('%d/%m/%Y às %H:%M')}")
-        # 🔧 Marcador de versão — se essa linha NÃO aparecer na tela, o app em
-        # produção ainda está rodando um app.py antigo (o deploy/push/reboot
-        # não pegou o arquivo novo). Serve só pra conferência, pode remover
-        # depois que confirmar que está tudo sincronizado.
-        st.caption("🔧 build app.py: 2026-10-02-v2 (RH ao vivo também em período fechado)")
         
         col_d1, col_d2, col_d3 = st.columns([1, 1, 3])
         with col_d1:
@@ -1421,6 +1416,10 @@ try:
                 # Admissão, não decai) e Abertas = Requisições − Concluídas RH, pra
                 # soma continuar batendo. Sem aviso/botão na tela (pedido out/2026).
                 if veio_de_snapshot:
+                    # O snapshot não guarda o escopo de lojas: filtra pelo seletor do
+                    # topo (ex.: "Total Lojas" não deve mostrar a Loja 30 congelada).
+                    if lojas_escopo is not None:
+                        df_relatorio = df_relatorio[df_relatorio['Loja'].isin(lojas_escopo)].reset_index(drop=True)
                     df_relatorio = df_relatorio.drop(columns=['Concluídas RH']).merge(
                         concluidas_rh_por_loja, on='Loja', how='left'
                     ).fillna({'Concluídas RH': 0})
