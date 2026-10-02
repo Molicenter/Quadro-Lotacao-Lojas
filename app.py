@@ -1135,7 +1135,7 @@ try:
         # produção ainda está rodando um app.py antigo (o deploy/push/reboot
         # não pegou o arquivo novo). Serve só pra conferência, pode remover
         # depois que confirmar que está tudo sincronizado.
-        st.caption("🔧 build app.py: 2026-10-02-v1 (% = Concluídas RH / Requisições; RH vale pela Data Admissão)")
+        st.caption("🔧 build app.py: 2026-10-02-v2 (RH ao vivo também em período fechado)")
         
         col_d1, col_d2, col_d3 = st.columns([1, 1, 3])
         with col_d1:
@@ -1416,6 +1416,21 @@ try:
                 else:
                     df_relatorio, veio_de_snapshot = _montar_df_relatorio_ao_vivo(), False
 
+                # Período fechado: Requisições e Concluídas DP seguem congeladas, mas
+                # Concluídas RH é sempre AO VIVO (regra out/2026: vale pela Data
+                # Admissão, não decai) e Abertas = Requisições − Concluídas RH, pra
+                # soma continuar batendo. Sem aviso/botão na tela (pedido out/2026).
+                if veio_de_snapshot:
+                    df_relatorio = df_relatorio.drop(columns=['Concluídas RH']).merge(
+                        concluidas_rh_por_loja, on='Loja', how='left'
+                    ).fillna({'Concluídas RH': 0})
+                    df_relatorio['Concluídas RH'] = df_relatorio['Concluídas RH'].astype(int)
+                    df_relatorio['Abertas'] = (df_relatorio['Requisições'] - df_relatorio['Concluídas RH']).clip(lower=0).astype(int)
+                    df_relatorio['%'] = df_relatorio.apply(
+                        lambda r: int(round(r['Concluídas RH'] / r['Requisições'] * 100)) if r['Requisições'] > 0 else 0,
+                        axis=1
+                    )
+
                 total_requisicoes = df_relatorio['Requisições'].sum()
                 total_concluidas = df_relatorio['Concluídas DP'].sum()
                 total_concluidas_rh = df_relatorio['Concluídas RH'].sum()
@@ -1549,34 +1564,6 @@ try:
 
                 html_resumo += "</tbody>\n</table>\n</div>"
 
-                if veio_de_snapshot:
-                    st.caption("📌 Período fechado — Requisições/Abertas/Concluídas RH congeladas no primeiro fechamento gerado.")
-
-                    # Snapshots congelados ANTES da métrica "Concluídas RH" existir ficaram
-                    # com 0 nessa coluna. Se o cálculo ao vivo (de cima) já acha algo pra
-                    # esse período, oferece recalcular só essa coluna do snapshot — sem
-                    # mexer em Requisições/Abertas/Concluídas DP, que continuam congeladas.
-                    # Também cobre a mudança de regra de out/2026 (Concluída RH passou a
-                    # valer pela Data Admissão): snapshots antigos podem divergir.
-                    rh_congelado_total = int(df_relatorio['Concluídas RH'].sum())
-                    rh_ao_vivo_total = int(concluidas_rh_por_loja['Concluídas RH'].sum()) if not concluidas_rh_por_loja.empty else 0
-                    if rh_congelado_total != rh_ao_vivo_total:
-                        st.caption(
-                            f"ℹ️ Concluídas RH congelada neste período = {rh_congelado_total}, mas pela regra "
-                            f"atual (vale a Data Admissão) daria {rh_ao_vivo_total}. Clique abaixo pra atualizar "
-                            "só essa coluna (Requisições/Abertas/Concluídas DP continuam congeladas)."
-                        )
-                        if st.button("🔁 Recalcular Concluídas RH deste período", key="btn_recalc_conc_rh"):
-                            with st.spinner("⏳ Atualizando Concluídas RH do snapshot..."):
-                                # Inclui TODAS as lojas do snapshot (lojas sem Concluída RH
-                                # pela regra nova precisam ir pra 0, não manter o valor antigo).
-                                _rh_todas = df_relatorio[['Loja']].merge(
-                                    concluidas_rh_por_loja, on='Loja', how='left'
-                                ).fillna({'Concluídas RH': 0})
-                                sobrescrever_concluidas_rh_snapshot(
-                                    supabase, data_inicio_filtro, data_fim_filtro, _rh_todas
-                                )
-                            st.rerun()
 
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
