@@ -1095,19 +1095,13 @@ try:
     mostrar_relatorio = st.checkbox("📊 Visualizar Relatório de Efetividade (Vagas Abertas vs Concluídas)", value=False)
 
     mostrar_ql_orcado = st.checkbox("📐 Visualizar QL Orçado (Organograma de Funções)", value=False)
-    
-    def sync_expandir():
-        if st.session_state["chk_alterados"]:
-            st.session_state["expander_global"] = True
-        else:
-            st.session_state["expander_global"] = False
-            
-    apenas_alterados = st.checkbox(
-        "📝 Visualizar apenas registros alterados/inseridos (Geral)", 
-        key="chk_alterados",
-        on_change=sync_expandir
-    )
-    
+
+    # Resumo por loja com os mesmos números dos cards do topo (out/2026).
+    # Substituiu o antigo checkbox "Visualizar apenas registros alterados/inseridos",
+    # que fazia exatamente o mesmo filtro do card 🟣 Alterados.
+    mostrar_resumo_status = st.checkbox("🏬 Visualizar Resumo de Situação por Loja (Ativos / Férias / Demitidos / Afastados / Alterados / Admitidos)", value=False)
+    apenas_alterados = False  # filtro de alterados agora é só pelo card 🟣 Alterados
+
     expandir_todos = st.checkbox(
         "📂 Expandir Todos os Departamentos", 
         key="expander_global"
@@ -1677,6 +1671,61 @@ try:
                             use_container_width=True, hide_index=True
                         )
 
+        st.markdown("---")
+
+    # =========================================================
+    # 🏬 RESUMO DE SITUAÇÃO POR LOJA (mesma regra dos cards do topo)
+    # =========================================================
+    if mostrar_resumo_status:
+        st.markdown("### 🏬 Resumo de Situação por Loja")
+        _agora_br_res = datetime.now() - timedelta(hours=3)
+        st.caption(f"Foto atual do quadro — gerado em {_agora_br_res.strftime('%d/%m/%Y às %H:%M')}. "
+                   f"Mesma contagem dos cards do topo, aberta por loja.")
+
+        _sit = df_loja['Situação_Upper']
+        df_res = pd.DataFrame({
+            'Loja': df_loja['Loja'],
+            'Ativos': _sit.str.contains('ATIVO', na=False),
+            'Férias': _sit.str.contains('FÉRIAS|FERIAS', na=False),
+            'Demitidos': _sit.str.contains('DEMITIDO', na=False) | _sit.isin(['NAN', 'NONE', '']),
+            'Afastados': _sit.str.contains('AFASTAMENTO|AFASTADO', na=False),
+            'Alterados': (df_loja['Possui_Alteracao_Sheets'] == True) & (~df_loja['Requisicao_Concluida']),
+            'Admitidos': (df_loja['Admitido_Recente'] == True) if 'Admitido_Recente' in df_loja.columns else False,
+        })
+        colunas_status = ['Ativos', 'Férias', 'Demitidos', 'Afastados', 'Alterados', 'Admitidos']
+        df_res[colunas_status] = df_res[colunas_status].astype(int)
+        df_res = df_res.groupby('Loja', as_index=False)[colunas_status].sum().sort_values('Loja')
+
+        linhas_res = []
+        for _, r in df_res.iterrows():
+            try:
+                nome_loja = f"Loja {int(r['Loja']):02d}"
+            except Exception:
+                nome_loja = str(r['Loja'])
+            linhas_res.append([nome_loja] + [int(r[c]) for c in colunas_status])
+        if len(linhas_res) > 1:
+            linhas_res.append(["Total"] + [int(df_res[c].sum()) for c in colunas_status])
+
+        cabecalhos_res = ["Loja", "🟢 Ativos", "🔵 Férias", "🔴 Demitidos", "🟠 Afastados", "🟣 Alterados", "🎓 Admitidos"]
+        html_status = "<div class='tabela-resumo-container'>\n<table class='tabela-resumo'>\n<thead>\n<tr>\n"
+        html_status += "".join(f"<th>{h}</th>\n" for h in cabecalhos_res)
+        html_status += "</tr>\n</thead>\n<tbody>\n"
+        for linha in linhas_res:
+            estilo_linha = "background-color: #DCEBF7; font-weight: bold;" if linha[0] == "Total" else ""
+            html_status += f"<tr style='{estilo_linha}'>\n"
+            html_status += "".join(f"<td>{v}</td>\n" for v in linha)
+            html_status += "</tr>\n"
+        html_status += "</tbody>\n</table>\n</div>\n"
+        st.markdown(html_status, unsafe_allow_html=True)
+
+        # Download em Excel/CSV da mesma tabela
+        df_down = pd.DataFrame(linhas_res, columns=["Loja"] + colunas_status)
+        st.download_button(
+            "⬇️ Baixar resumo (CSV)",
+            data=df_down.to_csv(index=False, sep=';').encode('utf-8-sig'),
+            file_name=f"Resumo_Situacao_{str(texto_titulo).replace(' ', '_')}_{_agora_br_res.strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv",
+        )
         st.markdown("---")
 
     # =========================================================
