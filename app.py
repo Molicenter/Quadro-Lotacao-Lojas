@@ -1721,7 +1721,7 @@ try:
         if len(linhas_res) > 1:
             linhas_res.append(["Total"] + [int(df_res[c].sum()) for c in colunas_status])
 
-        cabecalhos_res = ["Loja", "🟢 Ativos", "🔵 Férias", f"🔴 Demitidos ({DIAS_JANELA_DEMITIDOS_RESUMO}d)", "🟠 Afastados", "🟣 Alterados", "🎓 Admitidos"]
+        cabecalhos_res = ["Loja", "🟢 Ativos", "🔵 Férias", "🔴 Demitidos", "🟠 Afastados", "🟣 Alterados", "🎓 Admitidos"]
         html_status = "<div class='tabela-resumo-container'>\n<table class='tabela-resumo'>\n<thead>\n<tr>\n"
         html_status += "".join(f"<th>{h}</th>\n" for h in cabecalhos_res)
         html_status += "</tr>\n</thead>\n<tbody>\n"
