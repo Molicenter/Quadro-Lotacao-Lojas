@@ -116,6 +116,11 @@ DIAS_RETENCAO_ADMISSAO = 7
 # =========================================================
 DIAS_RETENCAO_DEMISSAO = 10
 
+# Janela do "Resumo de Situação por Loja": a coluna Demitidos conta só quem
+# tem 'Data Afastamento' nos últimos DIAS_JANELA_DEMITIDOS_RESUMO dias
+# (independente da retenção acima, que vale só pro quadro operacional).
+DIAS_JANELA_DEMITIDOS_RESUMO = 30
+
 def _parse_data_admissao(valor):
     """Converte uma data (texto DD/MM/AAAA, ISO, com hora, ou datetime/Timestamp do Excel)
     em date. None se vazia/inválida. Usada para Data Admissão e Data Abertura no relatório."""
@@ -721,6 +726,12 @@ def carregar_dados_completos():
     df['Demitido_Arquivar'] = situacao_upper_tmp.str.contains('DEMITIDO') & datas_afast.apply(
         lambda d: (d is not None) and (d < limite_demissao)
     )
+    # Demitido_Recente -> demitido (ou situação vazia) com 'Data Afastamento' dentro
+    # dos últimos DIAS_JANELA_DEMITIDOS_RESUMO dias. Usado no Resumo de Situação por Loja.
+    limite_resumo_dem = hoje_ref - timedelta(days=DIAS_JANELA_DEMITIDOS_RESUMO)
+    df['Demitido_Recente'] = (
+        situacao_upper_tmp.str.contains('DEMITIDO') | situacao_upper_tmp.isin(['NAN', 'NONE', ''])
+    ) & datas_afast.apply(lambda d: (d is not None) and (limite_resumo_dem <= d <= hoje_ref))
 
     return df
 
@@ -1679,15 +1690,19 @@ try:
     if mostrar_resumo_status:
         st.markdown("### 🏬 Resumo de Situação por Loja")
         _agora_br_res = datetime.now() - timedelta(hours=3)
+        _inicio_janela_dem = (date.today() - timedelta(days=DIAS_JANELA_DEMITIDOS_RESUMO)).strftime('%d/%m/%Y')
         st.caption(f"Foto atual do quadro — gerado em {_agora_br_res.strftime('%d/%m/%Y às %H:%M')}. "
-                   f"Mesma contagem dos cards do topo, aberta por loja.")
+                   f"Ativos, Férias, Afastados e Alterados seguem a mesma contagem dos cards do topo, aberta por loja. "
+                   f"**Demitidos** considera apenas desligamentos dos últimos {DIAS_JANELA_DEMITIDOS_RESUMO} dias "
+                   f"(Data Afastamento de {_inicio_janela_dem} até hoje). "
+                   f"Admitidos considera admissões dos últimos {DIAS_RETENCAO_ADMISSAO} dias.")
 
         _sit = df_loja['Situação_Upper']
         df_res = pd.DataFrame({
             'Loja': df_loja['Loja'],
             'Ativos': _sit.str.contains('ATIVO', na=False),
             'Férias': _sit.str.contains('FÉRIAS|FERIAS', na=False),
-            'Demitidos': _sit.str.contains('DEMITIDO', na=False) | _sit.isin(['NAN', 'NONE', '']),
+            'Demitidos': (df_loja['Demitido_Recente'] == True) if 'Demitido_Recente' in df_loja.columns else False,
             'Afastados': _sit.str.contains('AFASTAMENTO|AFASTADO', na=False),
             'Alterados': (df_loja['Possui_Alteracao_Sheets'] == True) & (~df_loja['Requisicao_Concluida']),
             'Admitidos': (df_loja['Admitido_Recente'] == True) if 'Admitido_Recente' in df_loja.columns else False,
@@ -1706,7 +1721,7 @@ try:
         if len(linhas_res) > 1:
             linhas_res.append(["Total"] + [int(df_res[c].sum()) for c in colunas_status])
 
-        cabecalhos_res = ["Loja", "🟢 Ativos", "🔵 Férias", "🔴 Demitidos", "🟠 Afastados", "🟣 Alterados", "🎓 Admitidos"]
+        cabecalhos_res = ["Loja", "🟢 Ativos", "🔵 Férias", f"🔴 Demitidos ({DIAS_JANELA_DEMITIDOS_RESUMO}d)", "🟠 Afastados", "🟣 Alterados", "🎓 Admitidos"]
         html_status = "<div class='tabela-resumo-container'>\n<table class='tabela-resumo'>\n<thead>\n<tr>\n"
         html_status += "".join(f"<th>{h}</th>\n" for h in cabecalhos_res)
         html_status += "</tr>\n</thead>\n<tbody>\n"
