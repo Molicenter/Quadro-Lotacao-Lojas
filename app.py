@@ -34,6 +34,29 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# =========================================================
+# 🐦 LOGO EMBUTIDA EM BASE64
+# O st.image entrega a imagem por um link temporário (/media/...) que deixa de
+# valer quando o app reinicia (ex.: após um commit) ou após muitos reruns —
+# aí a logo aparece quebrada. Embutindo em base64 no HTML ela nunca some.
+# =========================================================
+import base64
+
+@st.cache_data
+def _logo_base64(caminho="passaro_logo.png"):
+    if not os.path.exists(caminho):
+        return None
+    with open(caminho, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+def mostrar_logo(largura):
+    b64 = _logo_base64()
+    if b64:
+        st.markdown(
+            f"<img src='data:image/png;base64,{b64}' width='{largura}' alt='Molicenter'>",
+            unsafe_allow_html=True,
+        )
+
 # --- INICIALIZAÇÃO DO SUPABASE ---
 @st.cache_resource
 def init_supabase() -> Client:
@@ -496,7 +519,7 @@ if not st.session_state["logado"]:
                     st.markdown("<h2 style='margin: 0; padding: 0; line-height: 1;'>Molicenter QL</h2>", unsafe_allow_html=True)
                     st.markdown("<p style='color: #64748B; font-size: 15px; margin: 0; padding-top: 4px;'>QL - Quadro de Lotação</p>", unsafe_allow_html=True)
                 with col_logo:
-                    st.image("passaro_logo.png", width=90)
+                    mostrar_logo(90)
             else:
                 st.markdown("<h2 style='margin: 0; padding: 0; line-height: 1;'>Molicenter QL</h2>", unsafe_allow_html=True)
                 st.markdown("<p style='color: #64748B; font-size: 15px; margin: 0; padding-top: 4px;'>QL - Quadro de Lotação</p>", unsafe_allow_html=True)
@@ -504,12 +527,34 @@ if not st.session_state["logado"]:
             st.divider() 
             
             lista_usuarios = ["Selecione o usuário..."] + list(USUARIOS_DB.keys())
-            user_input = st.selectbox("E-mail corporativo:", lista_usuarios)
-            pass_input = st.text_input("Senha de acesso:", type="password", placeholder="••••••••")
 
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-            if st.button("Entrar no Sistema", use_container_width=True, type="primary"):
+            # Login dentro de st.form: o valor da senha é enviado junto com o clique,
+            # evitando o "senha incorreta" falso (corrida entre text_input e button).
+            with st.form("form_login", border=False):
+                user_input = st.selectbox("E-mail corporativo:", lista_usuarios)
+                pass_input = st.text_input("Senha de acesso:", type="password",
+                                           placeholder="••••••••", autocomplete="off")
+                st.markdown("<br>", unsafe_allow_html=True)
+                entrar = st.form_submit_button("Entrar no Sistema", use_container_width=True, type="primary")
+
+            # Bloqueia as sugestões do gerenciador de senhas do navegador
+            # (ex.: "criar senha forte" do Chrome) no campo de senha.
+            import streamlit.components.v1 as components
+            components.html("""
+                <script>
+                const aplicar = () => {
+                    window.parent.document.querySelectorAll('input[type="password"]').forEach(el => {
+                        el.setAttribute('autocomplete', 'off');
+                        el.setAttribute('data-lpignore', 'true');
+                        el.setAttribute('data-1p-ignore', 'true');
+                        el.setAttribute('data-form-type', 'other');
+                    });
+                };
+                aplicar(); setTimeout(aplicar, 300); setTimeout(aplicar, 1000);
+                </script>
+            """, height=0)
+
+            if entrar:
                 if user_input == "Selecione o usuário...":
                     st.warning("Por favor, selecione um usuário válido na lista.")
                 else:
@@ -761,7 +806,7 @@ try:
     col_main_logo, col_main_title = st.columns([0.15, 2.85], vertical_alignment="center")
     with col_main_logo:
         if os.path.exists("passaro_logo.png"):
-            st.image("passaro_logo.png", width=65) 
+            mostrar_logo(65)
     with col_main_title:
         st.markdown("<h2 style='margin: 0; padding: 0;'>Molicenter - QL (Quadro de Lotação)</h2>", unsafe_allow_html=True)
         
